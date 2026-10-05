@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { GameMetadata } from './types/chess';
 import { LandingPage } from './components/landing/LandingPage';
-import { AnalysisPreview } from './components/analysis/AnalysisPreview';
+import { AnalysisView } from './components/analysis/AnalysisView';
 
 function App() {
   const [currentPgn, setCurrentPgn] = useState<string | null>(null);
@@ -24,7 +24,7 @@ function App() {
         <LandingPage onSelectGame={handleSelectGame} />
       ) : (
         currentPgn && gameMetadata && (
-          <AnalysisPreview
+          <AnalysisView
             pgn={currentPgn}
             metadata={gameMetadata}
             onBack={handleBackToLanding}

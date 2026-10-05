@@ -11,19 +11,60 @@ export type MoveClassification =
 
 export interface MoveAnalysis {
   moveNumber: number;
+  moveIndex: number;
   color: 'w' | 'b';
   san: string;
   from: string;
   to: string;
   fenBefore: string;
   fenAfter: string;
-  evalBefore?: number; // centipawns or mate from White's perspective
-  evalAfter?: number;
-  mate?: number | null;
-  bestMoveSan?: string;
+  evalBefore?: number; // centipawns from White's perspective (+ is white advantage)
+  evalAfter?: number;  // centipawns from White's perspective
+  mateBefore?: number | null; // mate in N from White's perspective
+  mateAfter?: number | null;
   bestMoveUci?: string;
+  bestMoveSan?: string;
+  winChanceBefore?: number;
+  winChanceAfter?: number;
+  winChanceLoss?: number;
   classification?: MoveClassification;
   comment?: string;
+}
+
+export interface EngineEvaluation {
+  cp?: number;
+  mate?: number | null;
+  bestMoveUci: string;
+  bestMoveSan?: string;
+  depth: number;
+  pv?: string;
+}
+
+export interface ClassificationCount {
+  brilliant: number;
+  great: number;
+  best: number;
+  excellent: number;
+  good: number;
+  inaccuracy: number;
+  mistake: number;
+  blunder: number;
+  book: number;
+}
+
+export interface GameAccuracy {
+  white: number;
+  black: number;
+}
+
+export interface GameAnalysisResult {
+  moves: MoveAnalysis[];
+  accuracy: GameAccuracy;
+  counts: {
+    white: ClassificationCount;
+    black: ClassificationCount;
+  };
+  coachSummary: string;
 }
 
 export interface GameMetadata {
@@ -63,4 +104,11 @@ export interface ChessComGameSummary {
     rating: number;
     result: string;
   };
+}
+
+export interface AnalysisProgress {
+  percent: number;
+  currentMove: number;
+  totalMoves: number;
+  isComplete: boolean;
 }
