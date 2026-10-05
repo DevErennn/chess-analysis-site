@@ -16,6 +16,7 @@
     "react": "^19.2.8",
     "react-chessboard": "^5.12.1",
     "react-dom": "^19.2.8",
+    "stockfish.js": "^10.0.2",
     "tailwind-merge": "^3.7.0"
   },
   "devDependencies": {
