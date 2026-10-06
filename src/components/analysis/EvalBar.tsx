@@ -38,7 +38,7 @@ export const EvalBar: React.FC<EvalBarProps> = ({
   return (
     <div
       style={{ height }}
-      className="relative w-8 bg-[#1f1e1b] rounded-xl overflow-hidden shadow-inner flex flex-col justify-between border border-chess-border select-none"
+      className="relative w-6 sm:w-8 h-full bg-[#1f1e1b] rounded-xl overflow-hidden shadow-inner flex flex-col justify-between border border-chess-border select-none shrink-0"
       title={`Değerlendirme: ${label}`}
     >
       {/* Black Area (Top) */}

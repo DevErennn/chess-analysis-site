@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Chess } from 'chess.js';
-import { ArrowLeft, Copy, Check } from 'lucide-react';
+import { ArrowLeft, Copy, Check, Share2, Volume2, VolumeX, BookOpen } from 'lucide-react';
 import type { GameMetadata, MoveAnalysis, GameAnalysisResult } from '../../types/chess';
 import { getStockfishService } from '../../lib/stockfishService';
 import { 
@@ -9,6 +9,13 @@ import {
   countClassifications, 
   generateCoachSummary 
 } from '../../lib/moveClassifier';
+import { detectOpening } from '../../lib/openingExplorer';
+import { 
+  isSoundMuted, 
+  toggleSoundMuted, 
+  playMoveAnalysisSound, 
+  playMoveSound 
+} from '../../lib/soundEffects';
 import { EvalBar } from './EvalBar';
 import { BoardWithArrows } from './BoardWithArrows';
 import { EvalGraph } from './EvalGraph';
@@ -16,6 +23,7 @@ import { MoveHistoryTable } from './MoveHistoryTable';
 import { AnalysisControls } from './AnalysisControls';
 import { GameSummaryCard } from './GameSummaryCard';
 import { ClassificationBadge } from './ClassificationBadge';
+import { ShareReportModal } from './ShareReportModal';
 
 interface AnalysisViewProps {
   pgn: string;
@@ -34,6 +42,8 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
   const [isPlaying, setIsPlaying] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisProgress, setAnalysisProgress] = useState(0);
+  const [isMuted, setIsMuted] = useState<boolean>(() => isSoundMuted());
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const playTimerRef = useRef<number | null>(null);
@@ -77,6 +87,40 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
   // Analyzed moves state
   const [analyzedMoves, setAnalyzedMoves] = useState<MoveAnalysis[]>(initialMoves);
   const [currentStep, setCurrentStep] = useState<number>(0);
+
+  // Sound playback tracking step changes
+  const prevStepRef = useRef<number>(currentStep);
+  const isFirstRender = useRef(true);
+
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      prevStepRef.current = currentStep;
+      return;
+    }
+
+    const prev = prevStepRef.current;
+    prevStepRef.current = currentStep;
+
+    if (currentStep > prev && currentStep > 0) {
+      const move = analyzedMoves[currentStep - 1];
+      const isGameOver = currentStep === fens.length - 1 && metadata.result !== '*';
+      playMoveAnalysisSound(move, isGameOver);
+    } else if (currentStep < prev) {
+      playMoveSound();
+    }
+  }, [currentStep, analyzedMoves, fens.length, metadata.result]);
+
+  const handleToggleMute = useCallback(() => {
+    const next = toggleSoundMuted();
+    setIsMuted(next);
+  }, []);
+
+  // Detect Opening
+  const openingInfo = useMemo(() => {
+    const sans = analyzedMoves.map((m) => m.san);
+    return detectOpening(sans, metadata);
+  }, [analyzedMoves, metadata]);
 
   // Computed analysis summary (Accuracy, counts, coach)
   const analysisResult: GameAnalysisResult = useMemo(() => {
@@ -235,12 +279,15 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
       } else if (e.key.toLowerCase() === 'f') {
         e.preventDefault();
         setOrientation((p) => (p === 'white' ? 'black' : 'white'));
+      } else if (e.key.toLowerCase() === 'm') {
+        e.preventDefault();
+        handleToggleMute();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [fens.length]);
+  }, [fens.length, handleToggleMute]);
 
   const handleCopyPgn = async () => {
     try {
@@ -254,6 +301,13 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
 
   const currentEvalCp = activeMove?.evalAfter ?? 0;
   const currentEvalMate = activeMove?.mateAfter ?? null;
+
+  // Determine top and bottom players according to board orientation
+  const isWhiteBottom = orientation === 'white';
+  const topPlayer = isWhiteBottom ? metadata.black : metadata.white;
+  const bottomPlayer = isWhiteBottom ? metadata.white : metadata.black;
+  const topPlayerWon = isWhiteBottom ? metadata.result === '0-1' : metadata.result === '1-0';
+  const bottomPlayerWon = isWhiteBottom ? metadata.result === '1-0' : metadata.result === '0-1';
 
   return (
     <div className="min-h-screen bg-chess-dark text-gray-100 flex flex-col justify-between select-none">
@@ -274,19 +328,19 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
 
             {/* Players summary */}
             <div className="hidden sm:flex items-center gap-2 text-xs">
-              <span className="font-bold text-white truncate max-w-[140px]">
+              <span className="font-bold text-white truncate max-w-[130px]">
                 {metadata.white.name}
               </span>
               <span className="text-gray-500 font-mono">({metadata.white.rating || '?'})</span>
               <span className="text-gray-500 font-bold">vs</span>
-              <span className="font-bold text-white truncate max-w-[140px]">
+              <span className="font-bold text-white truncate max-w-[130px]">
                 {metadata.black.name}
               </span>
               <span className="text-gray-500 font-mono">({metadata.black.rating || '?'})</span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2 sm:gap-2.5">
             {/* Accuracy quick pill */}
             <div className="hidden md:flex items-center gap-2 px-3 py-1 rounded-lg bg-chess-surface border border-chess-border text-xs font-mono">
               <span className="text-gray-400">Doğruluk:</span>
@@ -295,20 +349,47 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
               <span className="font-bold text-white">%{analysisResult.accuracy.black}</span>
             </div>
 
+            {/* Sound Mute Toggle */}
+            <button
+              type="button"
+              onClick={handleToggleMute}
+              className={`p-2 rounded-lg border transition-colors cursor-pointer ${
+                isMuted
+                  ? 'bg-red-500/10 text-red-400 border-red-500/30 hover:bg-red-500/20'
+                  : 'bg-chess-card hover:bg-chess-cardHover border border-chess-border text-gray-300'
+              }`}
+              title={isMuted ? 'Sesi Aç (M)' : 'Sesi Kapat (M)'}
+            >
+              {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4 text-chess-accent" />}
+            </button>
+
+            {/* Share / Export Modal Button */}
+            <button
+              type="button"
+              onClick={() => setIsShareModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-chess-accent/15 hover:bg-chess-accent/25 border border-chess-accent/40 text-xs font-bold text-chess-accent transition-colors cursor-pointer"
+              title="Analiz Raporunu Paylaş ve İndir"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Paylaş & İndir</span>
+            </button>
+
+            {/* Copy PGN Button */}
             <button
               type="button"
               onClick={handleCopyPgn}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-chess-card hover:bg-chess-cardHover border border-chess-border text-xs text-gray-300 transition-colors cursor-pointer"
+              title="Orijinal PGN'i Kopyala"
             >
               {copied ? (
                 <>
                   <Check className="w-3.5 h-3.5 text-emerald-400" />
-                  <span className="text-emerald-400">Kopyalandı!</span>
+                  <span className="text-emerald-400 hidden sm:inline">Kopyalandı!</span>
                 </>
               ) : (
                 <>
                   <Copy className="w-3.5 h-3.5" />
-                  <span>PGN</span>
+                  <span className="hidden sm:inline">PGN</span>
                 </>
               )}
             </button>
@@ -320,27 +401,49 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
       <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 flex-1 w-full space-y-6">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Left Column: Board + Eval Bar + Graph */}
-          <div className="lg:col-span-7 flex flex-col items-center gap-4">
-            {/* Player Info (Black) */}
+          <div className="lg:col-span-7 flex flex-col items-center gap-3.5">
+            {/* Opening Tag Banner */}
+            {openingInfo && (
+              <div className="w-full max-w-[500px] flex items-center justify-between px-3.5 py-2 rounded-xl bg-chess-surface border border-chess-border text-xs shadow-sm">
+                <div className="flex items-center gap-2 overflow-hidden">
+                  <BookOpen className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span className="font-mono font-bold text-chess-accent shrink-0 text-xs">
+                    {openingInfo.eco}
+                  </span>
+                  <span className="text-gray-200 truncate font-semibold text-xs">
+                    {openingInfo.turkishName || openingInfo.name}
+                  </span>
+                </div>
+                <span className="text-[10px] text-gray-400 bg-chess-card px-2 py-0.5 rounded border border-chess-border shrink-0 font-medium ml-2">
+                  Açılış
+                </span>
+              </div>
+            )}
+
+            {/* Top Player Info (Adapts to orientation) */}
             <div className="w-full max-w-[500px] flex items-center justify-between text-xs px-1">
               <div className="flex items-center gap-2">
-                <span className="w-3.5 h-3.5 rounded-full bg-black border border-gray-600 shadow" />
-                <span className="font-bold text-white text-sm">{metadata.black.name}</span>
-                {metadata.black.rating && (
-                  <span className="text-gray-400 font-mono">({metadata.black.rating})</span>
+                <span
+                  className={`w-3.5 h-3.5 rounded-full border shadow ${
+                    isWhiteBottom ? 'bg-black border-gray-600' : 'bg-white border-gray-300'
+                  }`}
+                />
+                <span className="font-bold text-white text-sm">{topPlayer.name}</span>
+                {topPlayer.rating && (
+                  <span className="text-gray-400 font-mono">({topPlayer.rating})</span>
                 )}
               </div>
-              {metadata.result === '0-1' && (
+              {topPlayerWon && (
                 <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold text-[11px] border border-emerald-500/30">
-                  Kazandı (0-1)
+                  Kazandı ({metadata.result})
                 </span>
               )}
             </div>
 
-            {/* Board and Eval Bar Area */}
-            <div className="w-full max-w-[500px] flex items-center gap-3">
+            {/* Board and Eval Bar Area (Flex stretch for seamless responsive alignment) */}
+            <div className="w-full max-w-[500px] flex items-stretch gap-2.5 sm:gap-3">
               {/* Eval Bar */}
-              <div className="h-[360px] sm:h-[480px]">
+              <div className="self-stretch">
                 <EvalBar
                   cp={currentEvalCp}
                   mate={currentEvalMate}
@@ -350,7 +453,7 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
               </div>
 
               {/* Chessboard with interactive arrows */}
-              <div className="flex-1">
+              <div className="flex-1 min-w-0">
                 <BoardWithArrows
                   fen={currentFen}
                   orientation={orientation}
@@ -360,18 +463,22 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
               </div>
             </div>
 
-            {/* Player Info (White) */}
+            {/* Bottom Player Info (Adapts to orientation) */}
             <div className="w-full max-w-[500px] flex items-center justify-between text-xs px-1">
               <div className="flex items-center gap-2">
-                <span className="w-3.5 h-3.5 rounded-full bg-white border border-gray-300 shadow" />
-                <span className="font-bold text-white text-sm">{metadata.white.name}</span>
-                {metadata.white.rating && (
-                  <span className="text-gray-400 font-mono">({metadata.white.rating})</span>
+                <span
+                  className={`w-3.5 h-3.5 rounded-full border shadow ${
+                    isWhiteBottom ? 'bg-white border-gray-300' : 'bg-black border-gray-600'
+                  }`}
+                />
+                <span className="font-bold text-white text-sm">{bottomPlayer.name}</span>
+                {bottomPlayer.rating && (
+                  <span className="text-gray-400 font-mono">({bottomPlayer.rating})</span>
                 )}
               </div>
-              {metadata.result === '1-0' && (
+              {bottomPlayerWon && (
                 <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-bold text-[11px] border border-emerald-500/30">
-                  Kazandı (1-0)
+                  Kazandı ({metadata.result})
                 </span>
               )}
             </div>
@@ -379,14 +486,14 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
             {/* Move Explanation Bar */}
             {activeMove && (
               <div className="w-full max-w-[500px] p-3 rounded-xl bg-chess-card border border-chess-border flex items-center justify-between gap-3 shadow-md">
-                <div className="flex items-center gap-2.5">
+                <div className="flex items-center gap-2.5 overflow-hidden">
                   {activeMove.classification && (
                     <ClassificationBadge
                       classification={activeMove.classification}
                       size="md"
                     />
                   )}
-                  <div className="text-xs text-gray-200">
+                  <div className="text-xs text-gray-200 truncate">
                     <span className="font-bold text-white mr-1.5">{activeMove.san}:</span>
                     <span className="text-gray-300">{activeMove.comment || 'İyi hamle.'}</span>
                   </div>
@@ -420,12 +527,14 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
               isAnalyzing={isAnalyzing}
               analysisProgress={analysisProgress}
               depth={depth}
+              isMuted={isMuted}
               onFirst={handleFirst}
               onPrev={handlePrev}
               onNext={handleNext}
               onLast={handleLast}
               onTogglePlay={handleTogglePlay}
               onFlipBoard={handleFlipBoard}
+              onToggleMute={handleToggleMute}
               onStartAnalysis={startFullAnalysis}
               onStopAnalysis={stopAnalysis}
               onChangeDepth={setDepth}
@@ -444,14 +553,24 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
               accuracy={analysisResult.accuracy}
               counts={analysisResult.counts}
               coachSummary={analysisResult.coachSummary}
+              onShare={() => setIsShareModalOpen(true)}
             />
           </div>
         </div>
       </main>
 
+      {/* Share & Export Report Modal */}
+      <ShareReportModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+        metadata={metadata}
+        analysisResult={analysisResult}
+        openingInfo={openingInfo}
+      />
+
       {/* Footer */}
       <footer className="border-t border-chess-border/60 py-4 text-center text-xs text-gray-500 bg-chess-surface/40">
-        Klavye Kısayolları: <kbd className="px-1.5 py-0.5 rounded bg-chess-card border border-chess-border text-gray-300">←</kbd> Önceki, <kbd className="px-1.5 py-0.5 rounded bg-chess-card border border-chess-border text-gray-300">→</kbd> Sonraki, <kbd className="px-1.5 py-0.5 rounded bg-chess-card border border-chess-border text-gray-300">Boşluk</kbd> Oynat/Durdur, <kbd className="px-1.5 py-0.5 rounded bg-chess-card border border-chess-border text-gray-300">F</kbd> Tahtayı Çevir
+        Klavye Kısayolları: <kbd className="px-1.5 py-0.5 rounded bg-chess-card border border-chess-border text-gray-300">←</kbd> Önceki, <kbd className="px-1.5 py-0.5 rounded bg-chess-card border border-chess-border text-gray-300">→</kbd> Sonraki, <kbd className="px-1.5 py-0.5 rounded bg-chess-card border border-chess-border text-gray-300">Boşluk</kbd> Oynat/Durdur, <kbd className="px-1.5 py-0.5 rounded bg-chess-card border border-chess-border text-gray-300">F</kbd> Çevir, <kbd className="px-1.5 py-0.5 rounded bg-chess-card border border-chess-border text-gray-300">M</kbd> Ses
       </footer>
     </div>
   );

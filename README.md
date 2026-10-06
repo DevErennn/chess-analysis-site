@@ -36,8 +36,9 @@ Chess.com ve Lichess'in ücretli "Game Review" (Oyun İnceleme) özelliklerine a
 
 - [x] **Adım 1:** Vite + React + TypeScript + Tailwind CSS kurulumu, kütüphanelerin entegrasyonu ve tip mimarisi.
 - [x] **Adım 2:** Veri Giriş Ekranı (PGN Yapıştırma ve Chess.com API ile son 10 maçı çekme) - *([Detaylar için STEP_2_PROMPT.md dosyasına bakın](./STEP_2_PROMPT.md))*
-- [ ] **Adım 3 & 4:** Stockfish Web Worker Entegrasyonu, Eval Bar, Hamle Sınıflandırma ve Doğruluk Algoritması - *([Detaylar için STEP_3_PROMPT.md dosyasına bakın](./STEP_3_PROMPT.md))*
-- [ ] **Adım 5:** Değerlendirme Grafiği (Eval Graph), Tahta Üstü Oklar ve Yayınlama.
+- [x] **Adım 3 & 4:** Stockfish Web Worker Entegrasyonu, Eval Bar, Hamle Sınıflandırma ve Doğruluk Algoritması - *([Detaylar için STEP_3_PROMPT.md dosyasına bakın](./STEP_3_PROMPT.md))*
+- [x] **Adım 4 & 5 (Polish & Production):** Web Audio ses efektleri, ECO açılış tespiti, analizli PGN & sosyal rapor paylaşımı, mobil optimizasyon ve Vercel COOP/COEP headers.
+- [ ] **Adım 5 (İleri Seviye Eklentiler):** Lichess API entegrasyonu, hata tekrarı (Mistake Trainer puzzle modu), Multi-PV çoklu motor hatları ve görsel PNG paylaşımı - *([Detaylar için STEP_5_PROMPT.md dosyasına bakın](./STEP_5_PROMPT.md))*
 
 ---
 

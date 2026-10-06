@@ -1,7 +1,7 @@
 import React from 'react';
 import type { GameAccuracy, ClassificationCount, GameMetadata } from '../../types/chess';
 import { CLASSIFICATION_CONFIG } from './constants';
-import { Trophy, Award, MessageSquare } from 'lucide-react';
+import { Trophy, Award, MessageSquare, Share2 } from 'lucide-react';
 
 interface GameSummaryCardProps {
   metadata: GameMetadata;
@@ -11,6 +11,7 @@ interface GameSummaryCardProps {
     black: ClassificationCount;
   };
   coachSummary: string;
+  onShare?: () => void;
 }
 
 const ORDERED_KEYS: (keyof ClassificationCount)[] = [
@@ -29,6 +30,7 @@ export const GameSummaryCard: React.FC<GameSummaryCardProps> = ({
   accuracy,
   counts,
   coachSummary,
+  onShare,
 }) => {
   return (
     <div className="bg-chess-card border border-chess-border rounded-2xl p-5 shadow-xl space-y-5">
@@ -132,6 +134,18 @@ export const GameSummaryCard: React.FC<GameSummaryCardProps> = ({
           })}
         </div>
       </div>
+
+      {/* Share / Export Action Button */}
+      {onShare && (
+        <button
+          type="button"
+          onClick={onShare}
+          className="w-full py-2.5 px-4 rounded-xl bg-chess-surface hover:bg-chess-surface/90 border border-chess-border text-xs font-bold text-gray-200 hover:text-white flex items-center justify-center gap-2 transition-all cursor-pointer shadow hover:border-chess-accent/50"
+        >
+          <Share2 className="w-4 h-4 text-chess-accent" />
+          <span>Raporu Paylaş & PGN İndir</span>
+        </button>
+      )}
     </div>
   );
 };
