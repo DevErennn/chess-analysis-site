@@ -1,5 +1,6 @@
 import { Chess } from 'chess.js';
 import type { EngineEvaluation } from '../types/chess';
+import { fetchLichessCloudEval } from './cloudEvalService';
 
 export interface AnalysisOptions {
   depth?: number;
@@ -108,48 +109,79 @@ export class StockfishService {
   }
 
   /**
-   * Analyzes a single FEN position using Stockfish UCI commands.
+   * Analyzes a single FEN position using Lichess Cloud Eval or Stockfish UCI commands.
    * Returns evaluation from White's perspective (+ = White advantage).
    */
-  public evaluatePosition(fen: string, depth = 12): Promise<EngineEvaluation> {
+  public async evaluatePosition(
+    fen: string,
+    depth = 12,
+    useCloud = true
+  ): Promise<EngineEvaluation> {
+    // 1. Pre-check for terminal game positions (checkmate or draw)
+    try {
+      const testChess = new Chess(fen);
+      if (testChess.isCheckmate()) {
+        const turn = fen.split(' ')[1] || 'w';
+        const mateScore = turn === 'w' ? -1 : 1; // if it's White's turn, White is checkmated
+        return {
+          cp: mateScore > 0 ? 10000 : -10000,
+          mate: mateScore,
+          depth: 99,
+          bestMoveUci: '',
+          bestMoveSan: '',
+        };
+      }
+      if (testChess.isDraw()) {
+        return {
+          cp: 0,
+          mate: null,
+          depth: 99,
+          bestMoveUci: '',
+          bestMoveSan: '',
+        };
+      }
+    } catch {
+      // Proceed with engine
+    }
+
+    // 2. Check Lichess Cloud Evaluation first (depth 40-75+, instant)
+    if (useCloud) {
+      try {
+        const cloudEval = await fetchLichessCloudEval(fen, 1200);
+        if (cloudEval) {
+          return cloudEval;
+        }
+      } catch {
+        // Fallback to local Stockfish
+      }
+    }
+
+    // 3. Dynamic Tactical Quiescence depth adjustment:
+    let effectiveDepth = depth;
+    try {
+      const testChess = new Chess(fen);
+      if (testChess.inCheck()) {
+        effectiveDepth = depth + 2; // +2 ply tactical verification in checks
+      } else {
+        const legal = testChess.moves({ verbose: true });
+        const captureCount = legal.filter((m) => m.captured).length;
+        if (captureCount >= 2) {
+          effectiveDepth = depth + 1; // +1 ply in active tactical tension
+        }
+      }
+    } catch {
+      // ignore
+    }
+
     return new Promise((resolve) => {
       if (!this.worker) {
         resolve({
           cp: 0,
-          depth,
+          depth: effectiveDepth,
           bestMoveUci: '',
           bestMoveSan: '',
         });
         return;
-      }
-
-      // Pre-check for terminal game positions (checkmate or draw)
-      try {
-        const testChess = new Chess(fen);
-        if (testChess.isCheckmate()) {
-          const turn = fen.split(' ')[1] || 'w';
-          const mateScore = turn === 'w' ? -1 : 1; // if it's White's turn, White is checkmated
-          resolve({
-            cp: mateScore > 0 ? 10000 : -10000,
-            mate: mateScore,
-            depth,
-            bestMoveUci: '',
-            bestMoveSan: '',
-          });
-          return;
-        }
-        if (testChess.isDraw()) {
-          resolve({
-            cp: 0,
-            mate: null,
-            depth,
-            bestMoveUci: '',
-            bestMoveSan: '',
-          });
-          return;
-        }
-      } catch {
-        // Proceed with engine
       }
 
       const turn = fen.split(' ')[1] || 'w';
@@ -174,7 +206,7 @@ export class StockfishService {
           mate: lastMate ?? null,
           bestMoveUci: bestMoveUci || '',
           bestMoveSan: '',
-          depth,
+          depth: effectiveDepth,
           pv: lastPv,
         });
       }, 4500);
@@ -236,7 +268,7 @@ export class StockfishService {
               mate: lastMate ?? null,
               bestMoveUci,
               bestMoveSan,
-              depth,
+              depth: effectiveDepth,
               pv: lastPv,
             });
             return;
@@ -246,7 +278,7 @@ export class StockfishService {
 
       this.worker.addEventListener('message', messageHandler);
       this.worker.postMessage(`position fen ${fen}`);
-      this.worker.postMessage(`go depth ${depth}`);
+      this.worker.postMessage(`go depth ${effectiveDepth}`);
     });
   }
 
