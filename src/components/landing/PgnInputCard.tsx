@@ -91,16 +91,31 @@ export const PgnInputCard: React.FC<PgnInputCardProps> = ({ onSelectGame }) => {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={handleLoadSample}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-chess-surface hover:bg-chess-cardHover border border-chess-border text-xs font-medium text-chess-accent hover:text-chess-accentHover transition-all duration-200 hover:scale-[1.02] shadow-sm cursor-pointer"
-          title="Kasparov vs Topalov (1999) 'Kasparov's Immortal' maçını yükle"
-        >
-          <Sparkles className="w-3.5 h-3.5 text-chess-accent" />
-          <span className="hidden sm:inline">Örnek Maç:</span>
-          <span>Kasparov vs Topalov</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleLoadSample}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-chess-surface hover:bg-chess-cardHover border border-chess-border text-xs font-medium text-gray-300 hover:text-white transition-all shadow-sm cursor-pointer"
+            title="Örnek maç PGN metnini kutuya yapıştır"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-chess-accent" />
+            <span className="hidden sm:inline">Örnek Maç</span>
+            <span>Kasparov</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              const meta = parsePgnMetadata(SAMPLE_PGN);
+              onSelectGame(SAMPLE_PGN, meta);
+            }}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-chess-accent/15 hover:bg-chess-accent/25 border border-chess-accent/40 text-xs font-bold text-chess-accent hover:text-chess-accentHover transition-all shadow-sm cursor-pointer"
+            title="Kasparov vs Topalov maçını tek tıkla hemen analiz etmeye başla"
+          >
+            <Play className="w-3.5 h-3.5 fill-current" />
+            <span>Hemen İncele ⚡</span>
+          </button>
+        </div>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">

@@ -16,7 +16,8 @@ import {
   Zap, 
   AlertCircle, 
   Compass, 
-  ChevronRight 
+  ChevronRight,
+  Sparkles
 } from 'lucide-react';
 
 interface GameSummaryCardProps {
@@ -30,6 +31,8 @@ interface GameSummaryCardProps {
   turningPoint?: TurningPoint | null;
   missedWins?: MissedWin[];
   phaseAdvice?: PhaseAdvice;
+  isAnalyzing?: boolean;
+  analysisProgress?: number;
   onShare?: () => void;
   onSelectStep?: (step: number) => void;
   onSelectClassification?: (key: keyof ClassificationCount) => void;
@@ -55,6 +58,8 @@ export const GameSummaryCard: React.FC<GameSummaryCardProps> = ({
   turningPoint,
   missedWins,
   phaseAdvice,
+  isAnalyzing = false,
+  analysisProgress = 0,
   onShare,
   onSelectStep,
   onSelectClassification,
@@ -80,10 +85,18 @@ export const GameSummaryCard: React.FC<GameSummaryCardProps> = ({
                 {metadata.white.name}
               </span>
             </div>
-            <div className="text-3xl font-black text-white mt-4 font-mono">
-              %{accuracy.white}
+            {isAnalyzing ? (
+              <div className="text-xl sm:text-2xl font-bold text-chess-accent mt-4 font-mono animate-pulse">
+                %{analysisProgress}
+              </div>
+            ) : (
+              <div className="text-3xl font-black text-white mt-4 font-mono">
+                %{accuracy.white}
+              </div>
+            )}
+            <div className="text-[10px] text-gray-400 mt-0.5">
+              {isAnalyzing ? 'Hesaplanıyor...' : 'Doğruluk Oranı'}
             </div>
-            <div className="text-[10px] text-gray-400 mt-0.5">Doğruluk Oranı</div>
           </div>
 
           {/* Black Accuracy */}
@@ -94,16 +107,24 @@ export const GameSummaryCard: React.FC<GameSummaryCardProps> = ({
                 {metadata.black.name}
               </span>
             </div>
-            <div className="text-3xl font-black text-white mt-4 font-mono">
-              %{accuracy.black}
+            {isAnalyzing ? (
+              <div className="text-xl sm:text-2xl font-bold text-chess-accent mt-4 font-mono animate-pulse">
+                %{analysisProgress}
+              </div>
+            ) : (
+              <div className="text-3xl font-black text-white mt-4 font-mono">
+                %{accuracy.black}
+              </div>
+            )}
+            <div className="text-[10px] text-gray-400 mt-0.5">
+              {isAnalyzing ? 'Hesaplanıyor...' : 'Doğruluk Oranı'}
             </div>
-            <div className="text-[10px] text-gray-400 mt-0.5">Doğruluk Oranı</div>
           </div>
         </div>
       </div>
 
       {/* Turning Point (Kırılma Noktası) Card */}
-      {turningPoint && (
+      {!isAnalyzing && turningPoint && (
         <div 
           onClick={() => onSelectStep && onSelectStep(turningPoint.moveIndex + 1)}
           className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 hover:border-amber-500/60 hover:bg-amber-500/15 transition-all cursor-pointer group shadow-sm"
@@ -125,7 +146,7 @@ export const GameSummaryCard: React.FC<GameSummaryCardProps> = ({
       )}
 
       {/* Missed Wins Alert */}
-      {missedWins && missedWins.length > 0 && (
+      {!isAnalyzing && missedWins && missedWins.length > 0 && (
         <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/25 space-y-1.5">
           <div className="flex items-center gap-2 text-xs font-bold text-red-400">
             <AlertCircle className="w-3.5 h-3.5" />
@@ -147,7 +168,7 @@ export const GameSummaryCard: React.FC<GameSummaryCardProps> = ({
       )}
 
       {/* Phase Breakdown (Açılış, Orta Oyun, Oyun Sonu) */}
-      {phaseAdvice && (
+      {!isAnalyzing && phaseAdvice && (
         <div className="p-3.5 rounded-xl bg-chess-surface border border-chess-border/80 space-y-2.5">
           <div className="flex items-center gap-2 text-xs font-bold text-gray-200">
             <Compass className="w-3.5 h-3.5 text-chess-accent" />
@@ -171,16 +192,28 @@ export const GameSummaryCard: React.FC<GameSummaryCardProps> = ({
       )}
 
       {/* Coach Commentary */}
-      {coachSummary && (
+      {isAnalyzing ? (
         <div className="p-3.5 rounded-xl bg-chess-surface border border-chess-border/80 flex items-start gap-3">
-          <div className="w-8 h-8 rounded-lg bg-chess-accent/20 border border-chess-accent/40 flex items-center justify-center text-chess-accent shrink-0 mt-0.5">
-            <MessageSquare className="w-4 h-4" />
+          <div className="w-8 h-8 rounded-lg bg-chess-accent/20 border border-chess-accent/40 flex items-center justify-center text-chess-accent shrink-0 mt-0.5 animate-pulse">
+            <Sparkles className="w-4 h-4" />
           </div>
           <div className="text-xs text-gray-300 leading-relaxed">
-            <span className="font-bold text-white block mb-0.5">Koç Değerlendirmesi:</span>
-            {coachSummary}
+            <span className="font-bold text-white block mb-0.5">Analiz Sürüyor:</span>
+            Stockfish derin motor analizi yapılıyor (%{analysisProgress}). Bittiğinde net doğruluk ve koç tavsiyeleri burada görünecektir.
           </div>
         </div>
+      ) : (
+        coachSummary && (
+          <div className="p-3.5 rounded-xl bg-chess-surface border border-chess-border/80 flex items-start gap-3">
+            <div className="w-8 h-8 rounded-lg bg-chess-accent/20 border border-chess-accent/40 flex items-center justify-center text-chess-accent shrink-0 mt-0.5">
+              <MessageSquare className="w-4 h-4" />
+            </div>
+            <div className="text-xs text-gray-300 leading-relaxed">
+              <span className="font-bold text-white block mb-0.5">Koç Değerlendirmesi:</span>
+              {coachSummary}
+            </div>
+          </div>
+        )
       )}
 
       {/* Classification Breakdown Table with interactive row jumping */}
@@ -190,7 +223,9 @@ export const GameSummaryCard: React.FC<GameSummaryCardProps> = ({
             <Trophy className="w-3.5 h-3.5 text-amber-400" />
             <span>Hamle Dağılımı</span>
           </div>
-          <span className="text-[10px] text-gray-400 font-normal">Hamleye gitmek için tıkla</span>
+          <span className="text-[10px] text-gray-400 font-normal">
+            {isAnalyzing ? `Hesaplanıyor (%${analysisProgress})...` : 'Hamleye gitmek için tıkla'}
+          </span>
         </div>
 
         <div className="space-y-1.5">

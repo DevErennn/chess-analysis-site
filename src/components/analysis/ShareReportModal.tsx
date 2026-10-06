@@ -54,7 +54,7 @@ export const ShareReportModal: React.FC<ShareReportModalProps> = ({
     const greatCount = (counts.white.great || 0) + (counts.black.great || 0);
 
     const highlights: string[] = [];
-    if (brilliantCount > 0) highlights.push(`‼️ ${brilliantCount} Harika Hamle (Brilliant)`);
+    if (brilliantCount > 0) highlights.push(`‼️ ${brilliantCount} Göz Alıcı Hamle (Brilliant)`);
     if (greatCount > 0) highlights.push(`! ${greatCount} Üstün Hamle (Great)`);
     highlights.push(`⭐ En İyi: ⚪ ${counts.white.best} | ⚫ ${counts.black.best}`);
     highlights.push(`❌ Hata/Gaf: ⚪ ${(counts.white.mistake || 0) + (counts.white.blunder || 0)} | ⚫ ${(counts.black.mistake || 0) + (counts.black.blunder || 0)}`);
@@ -236,7 +236,7 @@ export const ShareReportModal: React.FC<ShareReportModalProps> = ({
             <div className="p-2.5 rounded-lg bg-chess-surface/70 border border-chess-border/50 flex items-center justify-between">
               <div className="flex items-center gap-1.5 text-cyan-400 font-semibold">
                 <Sparkles className="w-3.5 h-3.5" />
-                <span>Harika (!!)</span>
+                <span>Göz Alıcı (!!)</span>
               </div>
               <span className="font-mono font-bold text-white">
                 {(counts.white.brilliant || 0) + (counts.black.brilliant || 0)}

@@ -496,9 +496,17 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
             {/* Accuracy quick pill */}
             <div className="hidden md:flex items-center gap-2 px-3 py-1 rounded-lg bg-chess-surface border border-chess-border text-xs font-mono">
               <span className="text-gray-400">Doğruluk:</span>
-              <span className="font-bold text-white">%{analysisResult.accuracy.white}</span>
-              <span className="text-gray-600">|</span>
-              <span className="font-bold text-white">%{analysisResult.accuracy.black}</span>
+              {isAnalyzing ? (
+                <span className="text-chess-accent font-semibold animate-pulse">
+                  Hesaplanıyor (%{analysisProgress})...
+                </span>
+              ) : (
+                <>
+                  <span className="font-bold text-white">%{analysisResult.accuracy.white}</span>
+                  <span className="text-gray-600">|</span>
+                  <span className="font-bold text-white">%{analysisResult.accuracy.black}</span>
+                </>
+              )}
             </div>
 
             {/* Sound Mute Toggle */}
@@ -550,10 +558,10 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
       </header>
 
       {/* Main Analysis Workspace */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 flex-1 w-full space-y-6">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-5 flex-1 w-full space-y-6">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Left Column: Board + Eval Bar + Graph */}
-          <div className="lg:col-span-7 flex flex-col items-center gap-3.5">
+          <div className="lg:col-span-7 flex flex-col items-center gap-3.5 lg:sticky lg:top-20">
             {/* Opening Tag Banner */}
             {openingInfo && (
               <div className="w-full max-w-[500px] flex items-center justify-between px-3.5 py-2 rounded-xl bg-chess-surface border border-chess-border text-xs shadow-sm">
@@ -762,14 +770,12 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
               isAnalyzing={isAnalyzing}
               analysisProgress={analysisProgress}
               depth={depth}
-              isMuted={isMuted}
               onFirst={handleFirst}
               onPrev={handlePrev}
               onNext={handleNext}
               onLast={handleLast}
               onTogglePlay={handleTogglePlay}
               onFlipBoard={handleFlipBoard}
-              onToggleMute={handleToggleMute}
               onStartAnalysis={startFullAnalysis}
               onStopAnalysis={stopAnalysis}
               onChangeDepth={setDepth}
@@ -794,6 +800,8 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
               turningPoint={analysisResult.turningPoint}
               missedWins={analysisResult.missedWins}
               phaseAdvice={analysisResult.phaseAdvice}
+              isAnalyzing={isAnalyzing}
+              analysisProgress={analysisProgress}
               onShare={() => setIsShareModalOpen(true)}
               onSelectStep={(step) => {
                 if (isSandboxMode) handleExitSandbox();
