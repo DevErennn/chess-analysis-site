@@ -10,7 +10,8 @@ import {
   BookOpen, 
   FlaskConical, 
   RotateCcw, 
-  X
+  X,
+  Target
 } from 'lucide-react';
 import type { 
   GameMetadata, 
@@ -44,6 +45,8 @@ import { AnalysisControls } from './AnalysisControls';
 import { GameSummaryCard } from './GameSummaryCard';
 import { ClassificationBadge } from './ClassificationBadge';
 import { ShareReportModal } from './ShareReportModal';
+import { MistakePracticeModal } from './MistakePracticeModal';
+import { MultiPvPanel } from './MultiPvPanel';
 
 interface AnalysisViewProps {
   pgn: string;
@@ -64,6 +67,7 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
   const [analysisProgress, setAnalysisProgress] = useState(0);
   const [isMuted, setIsMuted] = useState<boolean>(() => isSoundMuted());
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [isMistakeTrainerOpen, setIsMistakeTrainerOpen] = useState(false);
 
   // Interactive Sandbox ("Ne Olurdu?") mode state
   const [isSandboxMode, setIsSandboxMode] = useState(false);
@@ -155,6 +159,17 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
   const turningPoint = useMemo(() => detectTurningPoint(analyzedMoves), [analyzedMoves]);
   const missedWins = useMemo(() => detectMissedWins(analyzedMoves), [analyzedMoves]);
   const phaseAdvice = useMemo(() => calculatePhaseAdvice(analyzedMoves), [analyzedMoves]);
+
+  // Mistakes count for practice trainer
+  const mistakesCount = useMemo(() => {
+    return analyzedMoves.filter(
+      (m) =>
+        (m.classification === 'blunder' ||
+          m.classification === 'mistake' ||
+          m.classification === 'inaccuracy') &&
+        Boolean(m.bestMoveUci && m.bestMoveUci !== '(none)')
+    ).length;
+  }, [analyzedMoves]);
 
   // Computed analysis summary (Accuracy, counts, coach)
   const analysisResult: GameAnalysisResult = useMemo(() => {
@@ -523,6 +538,22 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
               {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4 text-chess-accent" />}
             </button>
 
+            {/* Mistake Practice Trainer Button */}
+            {mistakesCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setIsMistakeTrainerOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-xs font-bold text-amber-300 transition-colors cursor-pointer shadow-sm"
+                title="Hatalı pozisyonları bulmaca şeklinde çözün"
+              >
+                <Target className="w-3.5 h-3.5 text-amber-400" />
+                <span className="hidden sm:inline">Hatalarımdan Öğren</span>
+                <span className="px-1.5 py-0.2 rounded-full bg-amber-500/30 text-[10px] text-amber-200 font-mono font-bold">
+                  {mistakesCount}
+                </span>
+              </button>
+            )}
+
             {/* Share / Export Modal Button */}
             <button
               type="button"
@@ -750,6 +781,14 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
               </div>
             )}
 
+            {/* Multi-PV Top 3 Engine Lines Panel */}
+            <div className="w-full max-w-[500px]">
+              <MultiPvPanel
+                fen={isSandboxMode ? sandboxFen : currentFen}
+                isSandboxMode={isSandboxMode}
+              />
+            </div>
+
             {/* Evaluation Timeline Graph */}
             <div className="w-full max-w-[500px]">
               <EvalGraph
@@ -803,6 +842,8 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
               isAnalyzing={isAnalyzing}
               analysisProgress={analysisProgress}
               onShare={() => setIsShareModalOpen(true)}
+              onOpenMistakes={() => setIsMistakeTrainerOpen(true)}
+              mistakesCount={mistakesCount}
               onSelectStep={(step) => {
                 if (isSandboxMode) handleExitSandbox();
                 setCurrentStep(step);
@@ -820,6 +861,17 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
         metadata={metadata}
         analysisResult={analysisResult}
         openingInfo={openingInfo}
+      />
+
+      {/* Mistake Practice Trainer Modal */}
+      <MistakePracticeModal
+        isOpen={isMistakeTrainerOpen}
+        onClose={() => setIsMistakeTrainerOpen(false)}
+        moves={analyzedMoves}
+        onGoToMoveInGame={(moveIndex) => {
+          setIsMistakeTrainerOpen(false);
+          setCurrentStep(moveIndex + 1);
+        }}
       />
 
       {/* Footer */}

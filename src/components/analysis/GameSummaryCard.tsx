@@ -17,7 +17,8 @@ import {
   AlertCircle, 
   Compass, 
   ChevronRight,
-  Sparkles
+  Sparkles,
+  Target
 } from 'lucide-react';
 
 interface GameSummaryCardProps {
@@ -36,6 +37,8 @@ interface GameSummaryCardProps {
   onShare?: () => void;
   onSelectStep?: (step: number) => void;
   onSelectClassification?: (key: keyof ClassificationCount) => void;
+  onOpenMistakes?: () => void;
+  mistakesCount?: number;
 }
 
 const ORDERED_KEYS: (keyof ClassificationCount)[] = [
@@ -63,6 +66,8 @@ export const GameSummaryCard: React.FC<GameSummaryCardProps> = ({
   onShare,
   onSelectStep,
   onSelectClassification,
+  onOpenMistakes,
+  mistakesCount = 0,
 }) => {
   return (
     <div className="bg-chess-card border border-chess-border rounded-2xl p-5 shadow-xl space-y-5">
@@ -277,6 +282,18 @@ export const GameSummaryCard: React.FC<GameSummaryCardProps> = ({
           })}
         </div>
       </div>
+
+      {/* Mistake Practice Trainer Button */}
+      {onOpenMistakes && mistakesCount > 0 && (
+        <button
+          type="button"
+          onClick={onOpenMistakes}
+          className="w-full py-2.5 px-4 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-xs font-bold text-amber-300 flex items-center justify-center gap-2 transition-all cursor-pointer shadow hover:border-amber-400 active:scale-[0.99]"
+        >
+          <Target className="w-4 h-4 text-amber-400" />
+          <span>🎯 Hatalarımdan Öğren ({mistakesCount} Pozisyon)</span>
+        </button>
+      )}
 
       {/* Share / Export Action Button */}
       {onShare && (

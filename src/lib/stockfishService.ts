@@ -1,5 +1,5 @@
 import { Chess } from 'chess.js';
-import type { EngineEvaluation } from '../types/chess';
+import type { EngineEvaluation, MultiPvCandidate } from '../types/chess';
 import { fetchLichessCloudEval } from './cloudEvalService';
 
 export interface AnalysisOptions {
@@ -277,8 +277,156 @@ export class StockfishService {
       };
 
       this.worker.addEventListener('message', messageHandler);
+      this.worker.postMessage('setoption name MultiPV value 1');
       this.worker.postMessage(`position fen ${fen}`);
       this.worker.postMessage(`go depth ${effectiveDepth}`);
+    });
+  }
+
+  /**
+   * Evaluates top N candidate engine lines (MultiPV) for the given FEN.
+   * Returns up to `count` candidate moves with evaluation and continuation.
+   */
+  public async evaluatePositionMultiPv(
+    fen: string,
+    depth = 11,
+    count = 3
+  ): Promise<MultiPvCandidate[]> {
+    await this.waitReady();
+
+    if (!this.worker) {
+      return [];
+    }
+
+    // Terminal position check
+    try {
+      const test = new Chess(fen);
+      if (test.isGameOver()) {
+        return [];
+      }
+    } catch {
+      // proceed
+    }
+
+    return new Promise((resolve) => {
+      const turn = fen.split(' ')[1] || 'w';
+      const linesMap = new Map<number, {
+        multipv: number;
+        cp?: number;
+        mate?: number | null;
+        depth: number;
+        pv: string;
+      }>();
+      let isResolved = false;
+
+      const finish = () => {
+        if (isResolved) return;
+        isResolved = true;
+        if (timeoutId) clearTimeout(timeoutId);
+        this.worker?.removeEventListener('message', messageHandler);
+        this.worker?.postMessage('setoption name MultiPV value 1');
+
+        const rawCandidates = Array.from(linesMap.values()).sort(
+          (a, b) => a.multipv - b.multipv
+        );
+
+        // Convert UCI moves to SAN
+        const candidates: MultiPvCandidate[] = rawCandidates.map((c) => {
+          const uciMoves = c.pv ? c.pv.trim().split(/\s+/) : [];
+          const bestMoveUci = uciMoves[0] || '';
+          let bestMoveSan = bestMoveUci;
+          const pvSanList: string[] = [];
+
+          try {
+            const chess = new Chess(fen);
+            for (let i = 0; i < Math.min(uciMoves.length, 5); i++) {
+              const u = uciMoves[i];
+              const from = u.slice(0, 2);
+              const to = u.slice(2, 4);
+              const promotion = u.length > 4 ? u.slice(4, 5) : undefined;
+              const res = chess.move({ from, to, promotion });
+              if (res) {
+                if (i === 0) bestMoveSan = res.san;
+                pvSanList.push(res.san);
+              } else {
+                break;
+              }
+            }
+          } catch {
+            // fallback
+          }
+
+          return {
+            multipv: c.multipv,
+            cp: c.cp,
+            mate: c.mate,
+            depth: c.depth,
+            pv: c.pv,
+            bestMoveUci,
+            bestMoveSan,
+            pvSanList,
+          };
+        });
+
+        resolve(candidates);
+      };
+
+      const timeoutId = setTimeout(finish, 3800);
+
+      const messageHandler = (e: MessageEvent) => {
+        const raw = typeof e.data === 'string' ? e.data : '';
+        const lines = raw.split(/\r?\n/);
+
+        for (const singleLine of lines) {
+          const line = singleLine.trim();
+          if (!line) continue;
+
+          if (line.startsWith('info') && line.includes('multipv') && line.includes('score')) {
+            const mpvMatch = line.match(/multipv (\d+)/);
+            const depthMatch = line.match(/depth (\d+)/);
+            const cpMatch = line.match(/score cp (-?\d+)/);
+            const mateMatch = line.match(/score mate (-?\d+)/);
+            const pvMatch = line.match(/ pv (.*)$/);
+
+            if (mpvMatch) {
+              const mpvNum = parseInt(mpvMatch[1], 10);
+              const curDepth = depthMatch ? parseInt(depthMatch[1], 10) : depth;
+              let cp: number | undefined = undefined;
+              let mate: number | null | undefined = undefined;
+
+              if (cpMatch) {
+                const rawCp = parseInt(cpMatch[1], 10);
+                cp = turn === 'w' ? rawCp : -rawCp;
+                mate = null;
+              } else if (mateMatch) {
+                const rawMate = parseInt(mateMatch[1], 10);
+                mate = turn === 'w' ? rawMate : -rawMate;
+                cp = mate > 0 ? 10000 : -10000;
+              }
+
+              const pv = pvMatch ? pvMatch[1] : '';
+
+              linesMap.set(mpvNum, {
+                multipv: mpvNum,
+                cp,
+                mate,
+                depth: curDepth,
+                pv,
+              });
+            }
+          }
+
+          if (line.startsWith('bestmove')) {
+            finish();
+            return;
+          }
+        }
+      };
+
+      this.worker?.addEventListener('message', messageHandler);
+      this.worker?.postMessage(`setoption name MultiPV value ${count}`);
+      this.worker?.postMessage(`position fen ${fen}`);
+      this.worker?.postMessage(`go depth ${depth}`);
     });
   }
 

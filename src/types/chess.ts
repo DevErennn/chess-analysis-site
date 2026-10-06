@@ -41,6 +41,17 @@ export interface EngineEvaluation {
   isCloud?: boolean;
 }
 
+export interface MultiPvCandidate {
+  multipv: number;
+  cp?: number;
+  mate?: number | null;
+  bestMoveUci: string;
+  bestMoveSan: string;
+  depth: number;
+  pv: string;
+  pvSanList?: string[];
+}
+
 export interface TurningPoint {
   moveIndex: number;
   moveNumber: number;

@@ -8,7 +8,8 @@ import {
   Trophy, 
   Award, 
   Sparkles,
-  BookOpen
+  BookOpen,
+  Image as ImageIcon
 } from 'lucide-react';
 import type { GameMetadata, GameAnalysisResult } from '../../types/chess';
 import type { OpeningInfo } from '../../lib/openingExplorer';
@@ -31,6 +32,8 @@ export const ShareReportModal: React.FC<ShareReportModalProps> = ({
 }) => {
   const [copiedText, setCopiedText] = useState(false);
   const [downloadSuccess, setDownloadSuccess] = useState(false);
+  const [downloadingCard, setDownloadingCard] = useState(false);
+  const [cardSuccess, setCardSuccess] = useState(false);
 
   if (!isOpen) return null;
 
@@ -169,6 +172,201 @@ export const ShareReportModal: React.FC<ShareReportModalProps> = ({
     }
   };
 
+  const handleDownloadImageCard = () => {
+    setDownloadingCard(true);
+    try {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1200;
+      canvas.height = 630;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) {
+        setDownloadingCard(false);
+        return;
+      }
+
+      // Background gradient
+      const bgGrad = ctx.createLinearGradient(0, 0, 1200, 630);
+      bgGrad.addColorStop(0, '#090d16');
+      bgGrad.addColorStop(0.5, '#0f172a');
+      bgGrad.addColorStop(1, '#020617');
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, 1200, 630);
+
+      // Radial neon glows
+      const radGrad = ctx.createRadialGradient(250, 120, 10, 250, 120, 450);
+      radGrad.addColorStop(0, 'rgba(56, 189, 248, 0.18)');
+      radGrad.addColorStop(1, 'rgba(15, 23, 42, 0)');
+      ctx.fillStyle = radGrad;
+      ctx.fillRect(0, 0, 1200, 630);
+
+      const radGrad2 = ctx.createRadialGradient(950, 480, 10, 950, 480, 450);
+      radGrad2.addColorStop(0, 'rgba(129, 140, 248, 0.16)');
+      radGrad2.addColorStop(1, 'rgba(15, 23, 42, 0)');
+      ctx.fillStyle = radGrad2;
+      ctx.fillRect(0, 0, 1200, 630);
+
+      // Outer border frame
+      ctx.strokeStyle = '#1e293b';
+      ctx.lineWidth = 4;
+      ctx.strokeRect(20, 20, 1160, 590);
+
+      // Top Title Bar
+      ctx.fillStyle = '#38bdf8';
+      ctx.font = 'bold 22px Inter, sans-serif';
+      ctx.fillText('⚡ SATRANÇ OYUN İNCELEMESİ • GAME REVIEW', 60, 75);
+
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '500 18px Inter, sans-serif';
+      const openingText = openingInfo
+        ? `${openingInfo.eco} - ${openingInfo.turkishName || openingInfo.name}`
+        : metadata.opening || metadata.event || 'Klasik Karşılaşma';
+      ctx.fillText(openingText.slice(0, 60), 60, 110);
+
+      // White Player Card (Left)
+      ctx.fillStyle = '#0f172a';
+      ctx.beginPath();
+      ctx.roundRect(60, 140, 470, 220, 20);
+      ctx.fill();
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // White indicator circle
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(105, 195, 16, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#94a3b8';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // White player name & rating
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 28px Inter, sans-serif';
+      ctx.fillText((white.name || 'Beyaz').slice(0, 18), 140, 205);
+
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '18px Inter, sans-serif';
+      ctx.fillText(white.rating ? `Puan: ${white.rating}` : 'Oyuncu', 140, 235);
+
+      // White accuracy score
+      ctx.fillStyle = '#38bdf8';
+      ctx.font = 'bold 54px monospace';
+      ctx.fillText(`%${accuracy.white}`, 105, 315);
+
+      ctx.fillStyle = '#64748b';
+      ctx.font = '600 15px Inter, sans-serif';
+      ctx.fillText('DOĞRULUK ORANI', 315, 308);
+
+      // Center VS & Result
+      ctx.fillStyle = '#64748b';
+      ctx.font = 'bold 26px Inter, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('VS', 600, 230);
+
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = 'bold 40px monospace';
+      ctx.fillText(result || '*', 600, 280);
+
+      // Black Player Card (Right)
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#0f172a';
+      ctx.beginPath();
+      ctx.roundRect(670, 140, 470, 220, 20);
+      ctx.fill();
+      ctx.strokeStyle = '#334155';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Black indicator circle
+      ctx.fillStyle = '#1e293b';
+      ctx.beginPath();
+      ctx.arc(715, 195, 16, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#64748b';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Black player name & rating
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 28px Inter, sans-serif';
+      ctx.fillText((black.name || 'Siyah').slice(0, 18), 750, 205);
+
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '18px Inter, sans-serif';
+      ctx.fillText(black.rating ? `Puan: ${black.rating}` : 'Oyuncu', 750, 235);
+
+      // Black accuracy score
+      ctx.fillStyle = '#38bdf8';
+      ctx.font = 'bold 54px monospace';
+      ctx.fillText(`%${accuracy.black}`, 715, 315);
+
+      ctx.fillStyle = '#64748b';
+      ctx.font = '600 15px Inter, sans-serif';
+      ctx.fillText('DOĞRULUK ORANI', 925, 308);
+
+      // Stats Banner Box
+      ctx.fillStyle = '#090d16';
+      ctx.beginPath();
+      ctx.roundRect(60, 385, 1080, 110, 16);
+      ctx.fill();
+      ctx.strokeStyle = '#1e293b';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      ctx.font = 'bold 18px Inter, sans-serif';
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillText(`‼️ Göz Alıcı: ${(counts.white.brilliant || 0) + (counts.black.brilliant || 0)}`, 90, 430);
+
+      ctx.fillStyle = '#34d399';
+      ctx.fillText(`⭐ En İyi: ${(counts.white.best || 0) + (counts.black.best || 0)}`, 320, 430);
+
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillText(`⚠️ Yanılgı: ${(counts.white.inaccuracy || 0) + (counts.black.inaccuracy || 0)}`, 560, 430);
+
+      ctx.fillStyle = '#f87171';
+      ctx.fillText(`❌ Hata & Gaf: ${(counts.white.mistake || 0) + (counts.white.blunder || 0) + (counts.black.mistake || 0) + (counts.black.blunder || 0)}`, 820, 430);
+
+      // Coach comment
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = 'italic 16px Inter, sans-serif';
+      const cleanCoach = (coachSummary || 'Kapsamlı oyun analizi ve hamle sınıflandırması.').replace(/\n/g, ' ');
+      ctx.fillText(`💬 "${cleanCoach.slice(0, 95)}${cleanCoach.length > 95 ? '...' : ''}"`, 90, 468);
+
+      // Bottom Watermark
+      ctx.fillStyle = '#64748b';
+      ctx.font = '600 15px Inter, sans-serif';
+      ctx.fillText('Stockfish 16 WASM & CAPS2 Doğruluk Algoritması', 60, 545);
+
+      ctx.textAlign = 'right';
+      ctx.fillText('Chess Analysis Site', 1140, 545);
+
+      // Export Blob
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          setDownloadingCard(false);
+          return;
+        }
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        const safeWhite = (white.name || 'white').toLowerCase().replace(/[^a-z0-9]/g, '_');
+        const safeBlack = (black.name || 'black').toLowerCase().replace(/[^a-z0-9]/g, '_');
+        link.href = url;
+        link.download = `${safeWhite}_vs_${safeBlack}_card.png`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        setDownloadingCard(false);
+        setCardSuccess(true);
+        setTimeout(() => setCardSuccess(false), 2500);
+      }, 'image/png');
+    } catch (err) {
+      console.error('Error generating card image:', err);
+      setDownloadingCard(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
       <div 
@@ -300,6 +498,31 @@ export const ShareReportModal: React.FC<ShareReportModalProps> = ({
               <>
                 <Copy className="w-4 h-4 text-chess-accent" />
                 <span>Raporu Kopyala (Metin)</span>
+              </>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleDownloadImageCard}
+            disabled={downloadingCard}
+            className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-500/40 text-cyan-300 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer shadow"
+            title="Instagram / Twitter / Discord için 1200x630 görsel kart oluşturup indirir"
+          >
+            {cardSuccess ? (
+              <>
+                <Check className="w-4 h-4 text-emerald-400" />
+                <span className="text-emerald-400">Görsel İndirildi!</span>
+              </>
+            ) : downloadingCard ? (
+              <>
+                <ImageIcon className="w-4 h-4 animate-spin" />
+                <span>Oluşturuluyor...</span>
+              </>
+            ) : (
+              <>
+                <ImageIcon className="w-4 h-4 text-cyan-400" />
+                <span>Kart İndir (.png)</span>
               </>
             )}
           </button>
