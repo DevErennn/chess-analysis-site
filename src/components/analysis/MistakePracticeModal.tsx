@@ -114,6 +114,13 @@ export const MistakePracticeModal: React.FC<MistakePracticeModalProps> = ({
         playBrilliantSound();
       } else {
         setStatus('failed');
+        setTimeout(() => {
+          setPlayedFen((current) => {
+            // Only reset if still failed
+            return current ? null : current;
+          });
+          setStatus((current) => (current === 'failed' ? 'idle' : current));
+        }, 1400);
       }
 
       return true;

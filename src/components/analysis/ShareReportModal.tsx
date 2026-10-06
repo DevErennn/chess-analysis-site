@@ -222,10 +222,19 @@ export const ShareReportModal: React.FC<ShareReportModalProps> = ({
         : metadata.opening || metadata.event || 'Klasik Karşılaşma';
       ctx.fillText(openingText.slice(0, 60), 60, 110);
 
+      // Safe roundRect helper
+      const drawRoundRect = (x: number, y: number, w: number, h: number, r: number) => {
+        if (typeof ctx.roundRect === 'function') {
+          ctx.roundRect(x, y, w, h, r);
+        } else {
+          ctx.rect(x, y, w, h);
+        }
+      };
+
       // White Player Card (Left)
       ctx.fillStyle = '#0f172a';
       ctx.beginPath();
-      ctx.roundRect(60, 140, 470, 220, 20);
+      drawRoundRect(60, 140, 470, 220, 20);
       ctx.fill();
       ctx.strokeStyle = '#38bdf8';
       ctx.lineWidth = 2;
@@ -272,7 +281,7 @@ export const ShareReportModal: React.FC<ShareReportModalProps> = ({
       ctx.textAlign = 'left';
       ctx.fillStyle = '#0f172a';
       ctx.beginPath();
-      ctx.roundRect(670, 140, 470, 220, 20);
+      drawRoundRect(670, 140, 470, 220, 20);
       ctx.fill();
       ctx.strokeStyle = '#334155';
       ctx.lineWidth = 2;
@@ -308,7 +317,7 @@ export const ShareReportModal: React.FC<ShareReportModalProps> = ({
       // Stats Banner Box
       ctx.fillStyle = '#090d16';
       ctx.beginPath();
-      ctx.roundRect(60, 385, 1080, 110, 16);
+      drawRoundRect(60, 385, 1080, 110, 16);
       ctx.fill();
       ctx.strokeStyle = '#1e293b';
       ctx.lineWidth = 1.5;

@@ -6,18 +6,21 @@ import { getStockfishService } from '../../lib/stockfishService';
 interface MultiPvPanelProps {
   fen: string;
   isSandboxMode?: boolean;
+  isAnalyzing?: boolean;
 }
 
 export const MultiPvPanel: React.FC<MultiPvPanelProps> = ({
   fen,
   isSandboxMode: _isSandboxMode = false,
+  isAnalyzing = false,
 }) => {
   const [isOpen, setIsOpen] = useState(true);
   const [loading, setLoading] = useState(false);
   const [lines, setLines] = useState<MultiPvCandidate[]>([]);
   const [autoEvaluate, setAutoEvaluate] = useState(true);
 
-  const fetchMultiPv = async (targetFen: string) => {
+  const fetchMultiPv = React.useCallback(async (targetFen: string) => {
+    if (isAnalyzing) return;
     setLoading(true);
     try {
       const stockfish = getStockfishService();
@@ -28,10 +31,10 @@ export const MultiPvPanel: React.FC<MultiPvPanelProps> = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [isAnalyzing]);
 
   useEffect(() => {
-    if (!autoEvaluate || !fen) return;
+    if (!autoEvaluate || !fen || isAnalyzing) return;
 
     let isMounted = true;
     const timer = setTimeout(() => {
@@ -44,7 +47,7 @@ export const MultiPvPanel: React.FC<MultiPvPanelProps> = ({
       isMounted = false;
       clearTimeout(timer);
     };
-  }, [fen, autoEvaluate]);
+  }, [fen, autoEvaluate, isAnalyzing, fetchMultiPv]);
 
   const formatScore = (candidate: MultiPvCandidate) => {
     if (candidate.mate !== null && candidate.mate !== undefined) {
@@ -103,7 +106,12 @@ export const MultiPvPanel: React.FC<MultiPvPanelProps> = ({
       {/* Expanded Content */}
       {isOpen && (
         <div className="p-2.5 space-y-2 text-xs">
-          {loading && lines.length === 0 ? (
+          {isAnalyzing ? (
+            <div className="py-3 text-center text-gray-400 flex items-center justify-center gap-2">
+              <Cpu className="w-4 h-4 text-cyan-400 animate-spin" />
+              <span>Ana maç analizi sürüyor, ardından hesaplanacak...</span>
+            </div>
+          ) : loading && lines.length === 0 ? (
             <div className="py-4 text-center text-gray-400 flex items-center justify-center gap-2">
               <Cpu className="w-4 h-4 text-cyan-400 animate-spin" />
               <span>Pozisyon varyantları hesaplanıyor...</span>

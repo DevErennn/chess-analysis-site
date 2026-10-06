@@ -56,7 +56,7 @@ export async function fetchLichessRecentGames(
 
   const url = `https://lichess.org/api/games/user/${encodeURIComponent(
     cleanUsername
-  )}?max=${limit}&pgnInJson=true&clocks=true&opening=true`;
+  )}?max=${limit}&pgnInJson=true&clocks=false&evals=false&opening=true`;
 
   let response: Response;
   try {
@@ -105,19 +105,30 @@ export async function fetchLichessRecentGames(
     // Determine winner/result
     let whiteResult = 'draw';
     let blackResult = 'draw';
+    let resultHeader = '*';
     if (g.winner === 'white') {
       whiteResult = 'win';
       blackResult = 'loss';
+      resultHeader = '1-0';
     } else if (g.winner === 'black') {
       whiteResult = 'loss';
       blackResult = 'win';
+      resultHeader = '0-1';
+    } else if (g.status === 'draw' || g.status === 'stalemate') {
+      resultHeader = '1/2-1/2';
     }
 
     const timeControlStr = formatLichessSpeed(g.speed, g.clock);
 
+    // Fallback if pgn field is absent but moves string is present
+    let gamePgn = g.pgn || '';
+    if (!gamePgn && g.moves) {
+      gamePgn = `[Event "Lichess Game"]\n[Site "https://lichess.org/${g.id}"]\n[White "${whitePlayer}"]\n[Black "${blackPlayer}"]\n[WhiteElo "${whiteRating}"]\n[BlackElo "${blackRating}"]\n[Result "${resultHeader}"]\n\n${g.moves} ${resultHeader}`;
+    }
+
     return {
       url: `https://lichess.org/${g.id}`,
-      pgn: g.pgn || '',
+      pgn: gamePgn,
       timeControl: timeControlStr,
       timeClass: g.speed || 'blitz',
       endTime: Math.floor((g.createdAt || Date.now()) / 1000),

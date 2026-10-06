@@ -543,14 +543,12 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
               <button
                 type="button"
                 onClick={() => setIsMistakeTrainerOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-xs font-bold text-amber-300 transition-colors cursor-pointer shadow-sm"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-xs font-bold text-amber-300 transition-colors cursor-pointer shadow-sm hover:border-amber-400"
                 title="Hatalı pozisyonları bulmaca şeklinde çözün"
               >
                 <Target className="w-3.5 h-3.5 text-amber-400" />
-                <span className="hidden sm:inline">Hatalarımdan Öğren</span>
-                <span className="px-1.5 py-0.2 rounded-full bg-amber-500/30 text-[10px] text-amber-200 font-mono font-bold">
-                  {mistakesCount}
-                </span>
+                <span className="hidden sm:inline">🎯 Hatalarımdan Öğren ({mistakesCount} Pozisyon)</span>
+                <span className="sm:hidden font-mono font-bold">🎯 ({mistakesCount})</span>
               </button>
             )}
 
@@ -786,6 +784,7 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
               <MultiPvPanel
                 fen={isSandboxMode ? sandboxFen : currentFen}
                 isSandboxMode={isSandboxMode}
+                isAnalyzing={isAnalyzing}
               />
             </div>
 
