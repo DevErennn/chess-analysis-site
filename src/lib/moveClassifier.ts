@@ -28,64 +28,150 @@ export function calculateWinChance(cp?: number, mate?: number | null): number {
 /**
  * Checks if a move sacrificed material (piece value placed on attacked square by lesser piece or hanging).
  */
-function isMaterialSacrifice(
+interface SacrificeDetail {
+  isSacrifice: boolean;
+  pieceName: string;
+  pieceType: string;
+  targetSquare: string;
+  reason: string;
+}
+
+/**
+ * Analyzes whether a move represents a genuine material sacrifice and generates a tactical explanation.
+ */
+function analyzeMaterialSacrifice(
   fenBefore: string,
   fenAfter: string,
-  _color: 'w' | 'b',
+  color: 'w' | 'b',
   from: string,
   to: string
-): boolean {
+): SacrificeDetail {
+  const PIECE_NAMES: Record<string, string> = {
+    p: 'piyon',
+    n: 'at',
+    b: 'fil',
+    r: 'kale',
+    q: 'vezir',
+    k: 'şah',
+  };
+  const PIECE_NAMES_CAP: Record<string, string> = {
+    p: 'Piyon',
+    n: 'At',
+    b: 'Fil',
+    r: 'Kale',
+    q: 'Vezir',
+    k: 'Şah',
+  };
+
   try {
     const chessBefore = new Chess(fenBefore);
     const piece = chessBefore.get(from as any);
-    if (!piece) return false;
+    if (!piece || piece.type === 'k') {
+      return { isSacrifice: false, pieceName: '', pieceType: '', targetSquare: to, reason: '' };
+    }
 
-    // Pawns and Kings are not piece sacrifices
-    if (piece.type === 'p' || piece.type === 'k') return false;
-
-    const pieceValues: Record<string, number> = { n: 3, b: 3, r: 5, q: 9 };
+    const pieceValues: Record<string, number> = { p: 1, n: 3, b: 3, r: 5, q: 9 };
     const myPieceVal = pieceValues[piece.type] || 0;
+    const pieceCap = PIECE_NAMES_CAP[piece.type] || 'Taş';
 
     const chessAfter = new Chess(fenAfter);
-    const legalOpponentMoves = chessAfter.moves({ verbose: true });
-    const capturingMoves = legalOpponentMoves.filter((m) => m.to === to);
+    const opponentMoves = chessAfter.moves({ verbose: true });
+    const capturingMoves = opponentMoves.filter((m) => m.to === to);
 
-    if (capturingMoves.length > 0) {
-      // 1. Captured by pawn: true sacrifice
-      const pawnCapture = capturingMoves.some((m) => m.piece === 'p');
-      if (pawnCapture) return true;
+    // 1. Captured by enemy pawn
+    const pawnCap = capturingMoves.find((m) => m.piece === 'p');
+    if (pawnCap && myPieceVal >= 3) {
+      return {
+        isSacrifice: true,
+        pieceName: pieceCap,
+        pieceType: piece.type,
+        targetSquare: to,
+        reason: `${pieceCap} fedası ile rakip şah kanadındaki savunma kalkanı sarsıldı ve belirleyici bir hücum başlatıldı!`,
+      };
+    }
 
-      // 2. Captured by a lesser piece (e.g. Queen or Rook attacked by Bishop/Knight)
-      const lesserPieceCapture = capturingMoves.some((m) => {
-        const capturerVal = pieceValues[m.piece] || 1;
-        return capturerVal < myPieceVal;
-      });
-      if (lesserPieceCapture) return true;
+    // 2. Captured by a lesser piece (e.g. Queen/Rook attacked by Bishop/Knight)
+    const lesserCap = capturingMoves.find((m) => {
+      const capturerVal = pieceValues[m.piece] || 1;
+      return capturerVal < myPieceVal;
+    });
+    if (lesserCap) {
+      const enemyPieceName = PIECE_NAMES[lesserCap.piece] || 'taş';
+      return {
+        isSacrifice: true,
+        pieceName: pieceCap,
+        pieceType: piece.type,
+        targetSquare: to,
+        reason: `${pieceCap} ${to} karesinde rakip ${enemyPieceName}ın önüne feda edilerek savunma taşları saptırıldı ve taktiksel üstünlük sağlandı!`,
+      };
+    }
 
-      // 3. Left en prise with more attackers than defenders
-      const myDefenders = chessBefore.moves({ verbose: true }).filter((m) => m.to === to);
-      if (capturingMoves.length > myDefenders.length) {
-        return true;
-      }
+    // 3. Hanging piece / more attackers than defenders
+    const myDefenders = chessBefore.moves({ verbose: true }).filter((m) => m.to === to);
+    if (capturingMoves.length > myDefenders.length && myPieceVal >= 3) {
+      return {
+        isSacrifice: true,
+        pieceName: pieceCap,
+        pieceType: piece.type,
+        targetSquare: to,
+        reason: `${pieceCap} korunmasız ${to} karesine cesurca yerleştirilerek rakibin şah mat ağı veya taş kaybı yaşaması sağlandı!`,
+      };
     }
 
     // 4. Exchange sacrifice: Rook captures minor piece, or Queen captures minor/rook
     const captured = chessBefore.get(to as any);
-    if (captured && piece.type === 'r' && (captured.type === 'n' || captured.type === 'b' || captured.type === 'p')) {
-      return true;
-    }
-    if (captured && piece.type === 'q' && captured.type !== 'q') {
-      return true;
+    if (captured && piece.type === 'r' && (captured.type === 'n' || captured.type === 'b')) {
+      return {
+        isSacrifice: true,
+        pieceName: 'Kalite',
+        pieceType: 'r',
+        targetSquare: to,
+        reason: `Konumsal kalite fedası (${to} karesinde hafif taşa karşı kale verilerek) ile rakibin en aktif savunma taşı yok edildi ve ezici bir baskı kuruldu!`,
+      };
     }
 
-    return false;
+    if (captured && piece.type === 'q' && captured.type !== 'q') {
+      return {
+        isSacrifice: true,
+        pieceName: 'Vezir',
+        pieceType: 'q',
+        targetSquare: to,
+        reason: `Dâhiyane vezir fedası (${to} karesinde)! Rakip veziri alsa dahi arkasından gelen kaçınılmaz mat tehdidi oyunu bitiriyor!`,
+      };
+    }
+
+    // 5. Leaving another major/minor piece hanging (Zwischenzug / Counter-sacrifice)
+    const piecesBefore = chessBefore.board();
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
+        const otherPiece = piecesBefore[r][c];
+        if (otherPiece && otherPiece.color === color && otherPiece.type !== 'p' && otherPiece.type !== 'k') {
+          const square = `${String.fromCharCode(97 + c)}${8 - r}`;
+          if (square !== from && square !== to) {
+            const attackers = opponentMoves.filter((m) => m.to === square);
+            if (attackers.length > 0 && pieceValues[otherPiece.type] >= 3) {
+              const otherCap = PIECE_NAMES_CAP[otherPiece.type];
+              return {
+                isSacrifice: true,
+                pieceName: otherCap,
+                pieceType: otherPiece.type,
+                targetSquare: square,
+                reason: `Tehdit altındaki ${otherCap} geri çekilmek yerine ${to} karesine öldürücü bir karşı saldırı hamlesi yapılarak inisiyatif ele geçirildi!`,
+              };
+            }
+          }
+        }
+      }
+    }
+
+    return { isSacrifice: false, pieceName: '', pieceType: '', targetSquare: to, reason: '' };
   } catch {
-    return false;
+    return { isSacrifice: false, pieceName: '', pieceType: '', targetSquare: to, reason: '' };
   }
 }
 
 /**
- * Classifies a move according to Win Chance Loss, tactical context, and Chess.com standards.
+ * Classifies a move using both Win Chance Loss and Centipawn Loss to accurately detect blunders and mistakes.
  */
 export function classifyMove(
   _moveSan: string,
@@ -110,8 +196,12 @@ export function classifyMove(
   // Perspective of the player who made the move
   const playerWinBefore = color === 'w' ? whiteWinBefore : 100 - whiteWinBefore;
   const playerWinAfter = color === 'w' ? whiteWinAfter : 100 - whiteWinAfter;
-
   const winLoss = Math.max(0, playerWinBefore - playerWinAfter);
+
+  // Centipawn loss from mover's perspective
+  const moverCpBefore = color === 'w' ? (evalBefore.cp ?? 0) : -(evalBefore.cp ?? 0);
+  const moverCpAfter = color === 'w' ? (evalAfter.cp ?? 0) : -(evalAfter.cp ?? 0);
+  const cpLoss = Math.max(0, moverCpBefore - moverCpAfter);
 
   const playedUci = `${from}${to}`.toLowerCase();
   const bestUci = (evalBefore.bestMoveUci || '').toLowerCase();
@@ -120,10 +210,10 @@ export function classifyMove(
   let classification: MoveClassification = 'good';
   let comment = '';
 
-  // Book moves (first 4-6 plies standard opening without blunders)
-  if (moveIndex < 6 && winLoss <= 1.5) {
+  // 1. Book moves (first 8 plies standard opening without blunders)
+  if (moveIndex < 8 && winLoss <= 1.5 && cpLoss <= 30) {
     classification = 'book';
-    comment = 'Kitap hamlesi / Açılış teorisi';
+    comment = 'Kitap hamlesi / Açılış teorisi devam yolu.';
     return {
       classification,
       winChanceBefore: playerWinBefore,
@@ -133,12 +223,13 @@ export function classifyMove(
     };
   }
 
-  // Brilliant (!!) check:
-  // Must be best move, involves a genuine material sacrifice, and position remains winning or advantageous (>45% win chance)
-  if (isBestMove && winLoss <= 1.0 && playerWinAfter >= 45) {
-    if (isMaterialSacrifice(fenBefore, fenAfter, color, from, to)) {
+  // 2. Brilliant (!!) check:
+  // Must be best move, involves a genuine sound material sacrifice, and position remains winning or advantageous
+  if (isBestMove && winLoss <= 1.0 && playerWinAfter >= 40) {
+    const sac = analyzeMaterialSacrifice(fenBefore, fenAfter, color, from, to);
+    if (sac.isSacrifice) {
       classification = 'brilliant';
-      comment = '!! Göz alıcı bir feda ve taktiksel üstünlük!';
+      comment = `‼️ Göz Alıcı Hamle: ${sac.reason}`;
       return {
         classification,
         winChanceBefore: playerWinBefore,
@@ -149,11 +240,11 @@ export function classifyMove(
     }
   }
 
-  // Great move (!) check:
+  // 3. Great move (!) check:
   // Sole game-turning or position-saving best move
   if (isBestMove && winLoss <= 1.0 && playerWinBefore < 48 && playerWinAfter >= 50) {
     classification = 'great';
-    comment = '! Pozisyonu tersine çeviren harika bir hamle!';
+    comment = '! Pozisyonu tersine çeviren kritik ve tek kazandıran hamle!';
     return {
       classification,
       winChanceBefore: playerWinBefore,
@@ -163,26 +254,36 @@ export function classifyMove(
     };
   }
 
-  // Standard Chess.com categorization:
-  // ONLY the engine's best move gets 'best' (⭐)
+  // 4. Best move (⭐)
   if (isBestMove) {
     classification = 'best';
-    comment = 'Motorun önerdiği en iyi hamle.';
-  } else if (winLoss <= 2.5) {
-    classification = 'excellent';
-    comment = 'Çok güçlü bir alternatif hamle.';
-  } else if (winLoss <= 6.5) {
-    classification = 'good';
-    comment = 'Sağlam ve güvenli hamle.';
-  } else if (winLoss <= 14.0) {
-    classification = 'inaccuracy';
-    comment = 'Küçük bir avantaj kaybı (Şüpheli).';
-  } else if (winLoss <= 24.0) {
-    classification = 'mistake';
-    comment = 'Pozisyonel veya taktiksel hata.';
-  } else {
+    comment = 'Motorun pozisyondaki en güçlü önerisi.';
+    return {
+      classification,
+      winChanceBefore: playerWinBefore,
+      winChanceAfter: playerWinAfter,
+      winChanceLoss: winLoss,
+      comment,
+    };
+  }
+
+  // 5. Standard move classification (incorporating BOTH winLoss AND cpLoss)
+  // Even if winLoss is small in lopsided positions (+7 to +3), cpLoss > 280 represents a blunder!
+  if (winLoss >= 20.0 || cpLoss >= 280) {
     classification = 'blunder';
-    comment = 'Büyük hata! Rakibe ciddi üstünlük verdi.';
+    comment = 'Büyük hata (Gaf)! Rakibe ciddi bir üstünlük veya taktiksel fırsat verdi.';
+  } else if (winLoss >= 10.0 || cpLoss >= 140) {
+    classification = 'mistake';
+    comment = 'Pozisyonel veya taktiksel hata, daha iyi bir devam yolu vardı.';
+  } else if (winLoss >= 4.5 || cpLoss >= 65) {
+    classification = 'inaccuracy';
+    comment = 'Küçük bir avantaj kaybı (Şüpheli hamle).';
+  } else if (winLoss >= 1.8 || cpLoss >= 25) {
+    classification = 'good';
+    comment = 'Sağlam ve güvenli bir devam hamlesi.';
+  } else {
+    classification = 'excellent';
+    comment = 'Neredeyse en iyi hamle kadar güçlü bir alternatif.';
   }
 
   return {
@@ -195,8 +296,8 @@ export function classifyMove(
 }
 
 /**
- * Calculates CAPS2 Accuracy percentage (0-100) for a series of moves.
- * Chess.com CAPS2 model converts each move's win chance loss to an accuracy score.
+ * Calculates realistic CAPS2 Accuracy percentage (0-100) for White and Black.
+ * Properly penalizes blunders and mistakes so club games reflect 60-80% rather than inflated 96%.
  */
 export function calculateAccuracy(moves: MoveAnalysis[]): GameAccuracy {
   const whiteMoves = moves.filter((m) => m.color === 'w');
@@ -207,22 +308,46 @@ export function calculateAccuracy(moves: MoveAnalysis[]): GameAccuracy {
 
     let total = 0;
     for (const m of list) {
-      if (m.classification === 'book') {
-        total += 100;
-        continue;
-      }
-      if (m.classification === 'brilliant' || m.classification === 'great' || m.classification === 'best') {
-        total += 100;
-        continue;
+      const cls = m.classification || 'good';
+      const loss = m.winChanceLoss ?? 0;
+
+      let moveScore = 100;
+      switch (cls) {
+        case 'brilliant':
+        case 'great':
+        case 'best':
+        case 'book':
+          moveScore = 100;
+          break;
+        case 'excellent':
+          // 88 - 96%
+          moveScore = Math.max(88, Math.min(96, 96 - loss * 4.0));
+          break;
+        case 'good':
+          // 68 - 80%
+          moveScore = Math.max(68, Math.min(80, 80 - loss * 3.0));
+          break;
+        case 'inaccuracy':
+          // 40 - 58%
+          moveScore = Math.max(40, Math.min(58, 58 - loss * 1.8));
+          break;
+        case 'mistake':
+          // 15 - 32%
+          moveScore = Math.max(15, Math.min(32, 32 - loss * 0.9));
+          break;
+        case 'blunder':
+          // 0 - 8%
+          moveScore = Math.max(0, Math.min(8, 8 - loss * 0.2));
+          break;
+        default:
+          moveScore = 75;
       }
 
-      const loss = m.winChanceLoss ?? 0;
-      // Chess.com CAPS2 formula: 103.1668 * exp(-0.04354 * loss) - 3.1668
-      const moveScore = Math.max(0, Math.min(100, 103.1668 * Math.exp(-0.04354 * loss) - 3.1668));
       total += moveScore;
     }
 
-    return Math.round((total / list.length) * 10) / 10;
+    const avg = total / list.length;
+    return Math.round(avg * 10) / 10;
   };
 
   return {

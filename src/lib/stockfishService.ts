@@ -4,6 +4,8 @@ import { fetchLichessCloudEval } from './cloudEvalService';
 
 export interface AnalysisOptions {
   depth?: number;
+  profileId?: import('../types/chess').EngineProfileId;
+  tacticalBoost?: boolean;
   onProgress?: (progress: {
     current: number;
     total: number;
@@ -115,7 +117,8 @@ export class StockfishService {
   public async evaluatePosition(
     fen: string,
     depth = 12,
-    useCloud = true
+    useCloud = true,
+    tacticalBoost = false
   ): Promise<EngineEvaluation> {
     // 1. Pre-check for terminal game positions (checkmate or draw)
     try {
@@ -161,12 +164,14 @@ export class StockfishService {
     try {
       const testChess = new Chess(fen);
       if (testChess.inCheck()) {
-        effectiveDepth = depth + 2; // +2 ply tactical verification in checks
+        effectiveDepth = depth + (tacticalBoost ? 4 : 2); // deeper tactical verification in checks
       } else {
         const legal = testChess.moves({ verbose: true });
         const captureCount = legal.filter((m) => m.captured).length;
         if (captureCount >= 2) {
-          effectiveDepth = depth + 1; // +1 ply in active tactical tension
+          effectiveDepth = depth + (tacticalBoost ? 3 : 1); // tactical tension
+        } else if (tacticalBoost) {
+          effectiveDepth = depth + 1;
         }
       }
     } catch {
@@ -455,7 +460,7 @@ export class StockfishService {
       }
 
       const fen = fens[i];
-      const evaluation = await this.evaluatePosition(fen, depth);
+      const evaluation = await this.evaluatePosition(fen, depth, true, options.tacticalBoost ?? false);
       results.push(evaluation);
 
       if (options.onProgress) {

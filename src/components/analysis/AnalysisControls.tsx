@@ -9,8 +9,13 @@ import {
   RotateCcw, 
   Cpu, 
   Square,
-  Sparkles
+  Sparkles,
+  Flame,
+  Crown,
+  Zap
 } from 'lucide-react';
+import type { EngineProfileId } from '../../types/chess';
+import { ENGINE_PROFILES } from '../../lib/engineProfiles';
 
 interface AnalysisControlsProps {
   currentStep: number;
@@ -19,6 +24,7 @@ interface AnalysisControlsProps {
   isAnalyzing: boolean;
   analysisProgress: number; // 0 - 100
   depth: number;
+  profileId?: EngineProfileId;
   onFirst: () => void;
   onPrev: () => void;
   onNext: () => void;
@@ -28,6 +34,7 @@ interface AnalysisControlsProps {
   onStartAnalysis: () => void;
   onStopAnalysis: () => void;
   onChangeDepth: (depth: number) => void;
+  onChangeProfile?: (profileId: EngineProfileId) => void;
 }
 
 export const AnalysisControls: React.FC<AnalysisControlsProps> = ({
@@ -37,6 +44,7 @@ export const AnalysisControls: React.FC<AnalysisControlsProps> = ({
   isAnalyzing,
   analysisProgress,
   depth,
+  profileId = 'stockfish-16',
   onFirst,
   onPrev,
   onNext,
@@ -46,7 +54,9 @@ export const AnalysisControls: React.FC<AnalysisControlsProps> = ({
   onStartAnalysis,
   onStopAnalysis,
   onChangeDepth,
+  onChangeProfile,
 }) => {
+  const currentProfile = ENGINE_PROFILES[profileId] || ENGINE_PROFILES['stockfish-16'];
   return (
     <div className="w-full space-y-4">
       {/* Navigation Buttons Row */}
@@ -120,15 +130,59 @@ export const AnalysisControls: React.FC<AnalysisControlsProps> = ({
         </button>
       </div>
 
-      {/* Stockfish Engine Controls & Progress */}
+      {/* Engine Profile & Stockfish Controls */}
       <div className="bg-chess-surface p-3.5 rounded-xl border border-chess-border space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xs font-bold text-gray-200">
-            <Cpu className="w-4 h-4 text-chess-accent" />
-            <span>Stockfish 16+ WASM / Cloud Eval</span>
+        {/* Profile Selector */}
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1.5">
+              <Cpu className="w-3.5 h-3.5 text-chess-accent" />
+              <span>Analiz Motoru & Profil:</span>
+            </span>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full border font-mono font-bold ${currentProfile.badgeColor}`}>
+              {currentProfile.shortName}
+            </span>
           </div>
 
-          <div className="flex items-center gap-1.5 text-xs">
+          <div className="grid grid-cols-2 gap-1.5">
+            {(Object.values(ENGINE_PROFILES) as (typeof currentProfile)[]).map((prof) => {
+              const isSelected = prof.id === profileId;
+              const Icon = prof.id === 'torch-tactical' ? Flame : prof.id === 'master-deep' ? Crown : prof.id === 'fast-scan' ? Zap : Cpu;
+              return (
+                <button
+                  key={prof.id}
+                  type="button"
+                  disabled={isAnalyzing}
+                  onClick={() => {
+                    if (onChangeProfile) onChangeProfile(prof.id);
+                    onChangeDepth(prof.defaultDepth);
+                  }}
+                  className={`p-2 rounded-lg text-left border transition-all cursor-pointer disabled:opacity-50 ${
+                    isSelected
+                      ? 'bg-chess-card border-chess-accent shadow-sm'
+                      : 'bg-chess-surface hover:bg-chess-cardHover border-chess-border text-gray-400 hover:text-white'
+                  }`}
+                >
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-gray-200">
+                    <Icon className={`w-3.5 h-3.5 shrink-0 ${isSelected ? 'text-chess-accent' : 'text-gray-400'}`} />
+                    <span className="truncate">{prof.shortName}</span>
+                  </div>
+                  <div className="text-[10px] text-gray-400 truncate mt-0.5 font-mono">
+                    {prof.tagline}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Depth & Engine Info */}
+        <div className="flex items-center justify-between pt-1 border-t border-chess-border/60 text-xs">
+          <div className="text-[11px] text-gray-400 truncate max-w-[220px]">
+            {currentProfile.description}
+          </div>
+
+          <div className="flex items-center gap-1.5 text-xs shrink-0 ml-2">
             <span className="text-gray-400 text-[11px]">Derinlik:</span>
             <select
               value={depth}
@@ -136,10 +190,11 @@ export const AnalysisControls: React.FC<AnalysisControlsProps> = ({
               onChange={(e) => onChangeDepth(Number(e.target.value))}
               className="bg-chess-card border border-chess-border text-white text-xs rounded-lg px-2 py-1 outline-none focus:border-chess-accent cursor-pointer disabled:opacity-50"
             >
-              <option value={10}>10 (Çok Hızlı)</option>
-              <option value={12}>12 (Dengeli)</option>
+              <option value={10}>10 (Hızlı)</option>
+              <option value={12}>12 (Standart)</option>
               <option value={14}>14 (Derin)</option>
               <option value={16}>16 (Usta)</option>
+              <option value={18}>18 (Maksimum)</option>
             </select>
           </div>
         </div>

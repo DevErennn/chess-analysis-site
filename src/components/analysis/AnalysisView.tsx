@@ -18,8 +18,10 @@ import type {
   MoveAnalysis, 
   GameAnalysisResult, 
   ClassificationCount,
-  EngineEvaluation 
+  EngineEvaluation,
+  EngineProfileId
 } from '../../types/chess';
+import { ENGINE_PROFILES } from '../../lib/engineProfiles';
 import { getStockfishService } from '../../lib/stockfishService';
 import { 
   classifyMove, 
@@ -61,7 +63,8 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
 }) => {
   const [copied, setCopied] = useState(false);
   const [orientation, setOrientation] = useState<'white' | 'black'>('white');
-  const [depth, setDepth] = useState<number>(12);
+  const [depth, setDepth] = useState<number>(13);
+  const [profileId, setProfileId] = useState<EngineProfileId>('stockfish-16');
   const [isPlaying, setIsPlaying] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisProgress, setAnalysisProgress] = useState(0);
@@ -211,9 +214,12 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
     const updatedMoves = [...initialMoves];
 
     try {
+      const prof = ENGINE_PROFILES[profileId] || ENGINE_PROFILES['stockfish-16'];
       // Analyze all positions (N+1 FENs)
       const evals = await stockfish.analyzePositions(fens, {
         depth,
+        profileId,
+        tacticalBoost: prof.tacticalBoost,
         signal: controller.signal,
         onProgress: (prog) => {
           setAnalysisProgress(prog.percent);
@@ -265,7 +271,7 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
     } finally {
       setIsAnalyzing(false);
     }
-  }, [isAnalyzing, fens, depth, initialMoves]);
+  }, [isAnalyzing, fens, depth, initialMoves, profileId]);
 
   // Stop analysis
   const stopAnalysis = useCallback(() => {
@@ -757,23 +763,33 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
 
             {/* Move Explanation Bar (When not in sandbox) */}
             {!isSandboxMode && activeMove && (
-              <div className="w-full max-w-[500px] p-3 rounded-xl bg-chess-card border border-chess-border flex items-center justify-between gap-3 shadow-md">
-                <div className="flex items-center gap-2.5 overflow-hidden">
+              <div className={`w-full max-w-[500px] p-3 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shadow-md transition-all ${
+                activeMove.classification === 'brilliant'
+                  ? 'bg-cyan-950/40 border-cyan-400/50 shadow-cyan-500/10'
+                  : activeMove.classification === 'blunder'
+                  ? 'bg-red-950/20 border-red-500/40 shadow-red-500/5'
+                  : 'bg-chess-card border-chess-border'
+              }`}>
+                <div className="flex items-start sm:items-center gap-2.5 min-w-0">
                   {activeMove.classification && (
-                    <ClassificationBadge
-                      classification={activeMove.classification}
-                      size="md"
-                    />
+                    <div className="shrink-0 mt-0.5 sm:mt-0">
+                      <ClassificationBadge
+                        classification={activeMove.classification}
+                        size="md"
+                      />
+                    </div>
                   )}
-                  <div className="text-xs text-gray-200 truncate">
+                  <div className="text-xs text-gray-200 leading-snug">
                     <span className="font-bold text-white mr-1.5">{activeMove.san}:</span>
-                    <span className="text-gray-300">{activeMove.comment || 'İyi hamle.'}</span>
+                    <span className={activeMove.classification === 'brilliant' ? 'text-cyan-200 font-medium' : 'text-gray-300'}>
+                      {activeMove.comment || 'İyi hamle.'}
+                    </span>
                   </div>
                 </div>
 
                 {activeMove.bestMoveSan && activeMove.bestMoveSan !== activeMove.san && (
-                  <div className="text-[11px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2 py-1 rounded-md shrink-0">
-                    En iyi: <strong>{activeMove.bestMoveSan}</strong>
+                  <div className="text-[11px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2 py-1 rounded-md shrink-0 self-end sm:self-center font-mono">
+                    En iyi: <strong className="font-bold">{activeMove.bestMoveSan}</strong>
                   </div>
                 )}
               </div>
@@ -808,6 +824,7 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
               isAnalyzing={isAnalyzing}
               analysisProgress={analysisProgress}
               depth={depth}
+              profileId={profileId}
               onFirst={handleFirst}
               onPrev={handlePrev}
               onNext={handleNext}
@@ -817,6 +834,7 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
               onStartAnalysis={startFullAnalysis}
               onStopAnalysis={stopAnalysis}
               onChangeDepth={setDepth}
+              onChangeProfile={setProfileId}
             />
 
             {/* Move History Table */}

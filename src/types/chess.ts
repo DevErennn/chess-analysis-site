@@ -1,3 +1,5 @@
+export type EngineProfileId = 'stockfish-16' | 'torch-tactical' | 'master-deep' | 'fast-scan';
+
 export type MoveClassification = 
   | 'brilliant'   // !!
   | 'great'       // !
