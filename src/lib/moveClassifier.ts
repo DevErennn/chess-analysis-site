@@ -267,22 +267,136 @@ export function countClassifications(moves: MoveAnalysis[]): {
 }
 
 /**
+ * Detects the biggest Turning Point of the game (the move that swung the balance of power).
+ */
+export function detectTurningPoint(moves: MoveAnalysis[]): import('../types/chess').TurningPoint | null {
+  let worstMove: MoveAnalysis | null = null;
+  let maxSwing = 0;
+
+  for (const m of moves) {
+    if (m.classification === 'blunder' || m.classification === 'mistake') {
+      const swing = m.winChanceLoss ?? 0;
+      // Also consider whether the position was competitive before this move
+      const wasCompetitive = (m.winChanceBefore ?? 50) >= 35 && (m.winChanceBefore ?? 50) <= 85;
+      const effectiveScore = swing + (wasCompetitive ? 15 : 0);
+
+      if (effectiveScore > maxSwing) {
+        maxSwing = effectiveScore;
+        worstMove = m;
+      }
+    }
+  }
+
+  if (!worstMove || (worstMove.winChanceLoss ?? 0) < 18) {
+    return null;
+  }
+
+  const moverColor = worstMove.color === 'w' ? 'Beyaz' : 'Siyah';
+  const opponentColor = worstMove.color === 'w' ? 'Siyah' : 'Beyaz';
+  const moveLabel = `${worstMove.moveNumber}${worstMove.color === 'w' ? '.' : '...'} ${worstMove.san}`;
+
+  return {
+    moveIndex: worstMove.moveIndex,
+    moveNumber: worstMove.moveNumber,
+    color: worstMove.color,
+    san: worstMove.san,
+    from: worstMove.from,
+    to: worstMove.to,
+    evalBefore: worstMove.evalBefore ?? 0,
+    evalAfter: worstMove.evalAfter ?? 0,
+    winChanceLoss: worstMove.winChanceLoss ?? 0,
+    description: `${moveLabel} (${moverColor}) hamlesi maçın kader anı oldu ve oyunun dengesini tamamen ${opponentColor} lehine çevirdi.`,
+  };
+}
+
+/**
+ * Detects missed wins (positions where player had a winning advantage but squandered it).
+ */
+export function detectMissedWins(moves: MoveAnalysis[]): import('../types/chess').MissedWin[] {
+  const missed: import('../types/chess').MissedWin[] = [];
+
+  for (const m of moves) {
+    const winBefore = m.winChanceBefore ?? 0;
+    const loss = m.winChanceLoss ?? 0;
+
+    // Had >= 70% win chance, but lost >= 20% win chance on this move
+    if (winBefore >= 70 && loss >= 20 && (m.classification === 'blunder' || m.classification === 'mistake')) {
+      const moveLabel = `${m.moveNumber}${m.color === 'w' ? '.' : '...'} ${m.san}`;
+      missed.push({
+        moveIndex: m.moveIndex,
+        moveNumber: m.moveNumber,
+        color: m.color,
+        san: m.san,
+        bestMoveSan: m.bestMoveSan,
+        description: `${moveLabel} hamlesiyle net kazanç konumu elden kaçtı.${m.bestMoveSan ? ` En iyi devam yolu ${m.bestMoveSan} idi.` : ''}`,
+      });
+    }
+  }
+
+  return missed;
+}
+
+/**
+ * Calculates phase performance and dynamic coaching advice.
+ */
+export function calculatePhaseAdvice(moves: MoveAnalysis[]): import('../types/chess').PhaseAdvice {
+  const openingMoves = moves.filter((m) => m.moveIndex < 16);
+  const middleMoves = moves.filter((m) => m.moveIndex >= 16 && m.moveIndex < 40);
+  const endMoves = moves.filter((m) => m.moveIndex >= 40);
+
+  const getPhaseScore = (list: MoveAnalysis[]): number => {
+    if (list.length === 0) return 85;
+    const errors = list.filter((m) => m.classification === 'blunder' || m.classification === 'mistake').length;
+    const inaccuracies = list.filter((m) => m.classification === 'inaccuracy').length;
+    const base = 100 - (errors * 18 + inaccuracies * 7) / list.length * 10;
+    return Math.max(30, Math.min(100, Math.round(base)));
+  };
+
+  const opScore = getPhaseScore(openingMoves);
+  const midScore = getPhaseScore(middleMoves);
+  const endScore = getPhaseScore(endMoves);
+
+  let weakest: 'opening' | 'middlegame' | 'endgame' = 'middlegame';
+  const minScore = Math.min(opScore, midScore, endScore);
+  if (minScore === opScore) weakest = 'opening';
+  else if (minScore === endScore && endMoves.length > 0) weakest = 'endgame';
+
+  return {
+    opening: {
+      score: opScore,
+      comment: opScore > 85 ? 'Kusursuz açılış teorisi ve sağlam gelişim.' : 'Açılışta taş gelişimine ve merkez güvenliğine dikkat edilmeli.',
+    },
+    middlegame: {
+      score: midScore,
+      comment: midScore > 80 ? 'Etkili taktik görüş ve parça koordinasyonu.' : 'Taktik hesaplamalar ve taş uyutma riskleri üzerinde durulmalı.',
+    },
+    endgame: {
+      score: endScore,
+      comment: endScore > 80 ? 'Temiz oyun sonu tekniği ve piyon sürüşleri.' : 'Şah aktivitesi ve kritik piyon yapılarına odaklanılmalı.',
+    },
+    weakestPhase: weakest,
+  };
+}
+
+/**
  * Generates an automated coach commentary summary based on game stats.
  */
 export function generateCoachSummary(
   accuracy: GameAccuracy,
   counts: { white: ClassificationCount; black: ClassificationCount },
-  result: string
+  result: string,
+  turningPoint?: import('../types/chess').TurningPoint | null,
+  phaseAdvice?: import('../types/chess').PhaseAdvice
 ): string {
   const winner = result === '1-0' ? 'Beyaz' : result === '0-1' ? 'Siyah' : 'Beraberlik';
 
   let summary = '';
   if (winner === 'Beyaz') {
-    summary += `Beyaz %${accuracy.white} doğruluk ile galip geldi. `;
+    summary += `Beyaz %${accuracy.white} doğruluk ile üstün bir galibiyet elde etti. `;
   } else if (winner === 'Siyah') {
-    summary += `Siyah %${accuracy.black} doğruluk ile galip geldi. `;
+    summary += `Siyah %${accuracy.black} doğruluk ile galibiyete uzandı. `;
   } else {
-    summary += `İki taraf da mücadeleci bir oyun sergiledi (Beyaz: %${accuracy.white}, Siyah: %${accuracy.black}). `;
+    summary += `İki taraf da başa baş bir mücadele sergiledi (Beyaz: %${accuracy.white}, Siyah: %${accuracy.black}). `;
   }
 
   const whiteBlunders = counts.white.blunder;
@@ -292,20 +406,29 @@ export function generateCoachSummary(
 
   if (whiteBlunders === 0 && blackBlunders === 0) {
     if (whiteMistakes > 0 || blackMistakes > 0) {
-      summary += 'Oyuncular büyük gaflardan kaçındı ancak pozisyonel hatalar oyunun sonucunu etkiledi.';
+      summary += 'Oyuncular büyük gaflardan kaçındı ancak pozisyonel hatalar oyunun sonucunu belirledi.';
     } else {
-      summary += 'Her iki oyuncu da temiz ve dikkatli bir oyun oynadı.';
+      summary += 'Her iki oyuncu da usta seviyesinde temiz ve dikkatli bir oyun oynadı.';
     }
   } else if (blackBlunders > whiteBlunders) {
-    summary += `Siyah'ın yaptığı ${blackBlunders} büyük hata Beyaz'a kritik üstünlük sağladı.`;
+    summary += `Siyah'ın yaptığı ${blackBlunders} büyük hata Beyaz'a maçı kazandıran fırsatları verdi.`;
   } else if (whiteBlunders > blackBlunders) {
-    summary += `Beyaz'ın yaptığı ${whiteBlunders} büyük hata Siyah'a önemli fırsatlar sundu.`;
+    summary += `Beyaz'ın yaptığı ${whiteBlunders} büyük hata Siyah'a maçı çevirme imkanı sundu.`;
   } else {
-    summary += `Her iki tarafın yaptığı hatalar maçın dengesini sık sık değiştirdi.`;
+    summary += `Her iki tarafın yaptığı hatalar maçın dengesini defalarca değiştirdi.`;
   }
 
   if (counts.white.brilliant > 0 || counts.black.brilliant > 0) {
-    summary += ' Maçta tahtayı alevlendiren göz alıcı (!!) fedalar vardı!';
+    summary += ' 💥 Maçta tahtayı alevlendiren göz alıcı (!!) fedalar vardı!';
+  }
+
+  if (turningPoint) {
+    summary += ` ⚡ Oyunun kırılma anı: ${turningPoint.san} hamlesi oldu.`;
+  }
+
+  if (phaseAdvice) {
+    const phaseNames = { opening: 'Açılış', middlegame: 'Orta Oyun', endgame: 'Oyun Sonu' };
+    summary += ` Geliştirilmesi gereken öncelikli alan: ${phaseNames[phaseAdvice.weakestPhase]}.`;
   }
 
   return summary;

@@ -7,10 +7,12 @@ import {
   Cpu, 
   Target, 
   Sparkles,
-  Award
+  Award,
+  Swords
 } from 'lucide-react';
 import { PgnInputCard } from './PgnInputCard';
 import { ChessComImporter } from './ChessComImporter';
+import { LichessImporter } from './LichessImporter';
 import type { GameMetadata } from '../../types/chess';
 
 interface LandingPageProps {
@@ -18,7 +20,7 @@ interface LandingPageProps {
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({ onSelectGame }) => {
-  const [activeTab, setActiveTab] = useState<'pgn' | 'chesscom'>('pgn');
+  const [activeTab, setActiveTab] = useState<'pgn' | 'chesscom' | 'lichess'>('pgn');
 
   return (
     <div className="min-h-screen flex flex-col justify-between">
@@ -123,33 +125,49 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onSelectGame }) => {
 
         {/* Tab Selection */}
         <section className="max-w-3xl mx-auto">
-          <div className="flex p-1.5 rounded-2xl bg-chess-surface border border-chess-border mb-6 shadow-inner">
+          <div className="flex p-1.5 rounded-2xl bg-chess-surface border border-chess-border mb-6 shadow-inner gap-1">
             <button
               type="button"
               onClick={() => setActiveTab('pgn')}
-              className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 cursor-pointer ${
+              className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 cursor-pointer ${
                 activeTab === 'pgn'
                   ? 'bg-chess-card text-white shadow-md border border-chess-border text-chess-accent'
                   : 'text-gray-400 hover:text-gray-200 hover:bg-chess-card/40'
               }`}
             >
               <FileText className="w-4 h-4" />
-              <span>PGN Metni Yapıştır</span>
+              <span>PGN Yapıştır</span>
             </button>
 
             <button
               type="button"
               onClick={() => setActiveTab('chesscom')}
-              className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 cursor-pointer ${
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 cursor-pointer ${
                 activeTab === 'chesscom'
                   ? 'bg-chess-card text-white shadow-md border border-chess-border text-chess-accent'
                   : 'text-gray-400 hover:text-gray-200 hover:bg-chess-card/40'
               }`}
             >
               <User className="w-4 h-4" />
-              <span>Chess.com Hesabı</span>
+              <span>Chess.com</span>
               <span className="hidden sm:inline-block px-1.5 py-0.2 rounded text-[10px] bg-chess-accent/20 text-chess-accent font-bold">
                 API
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('lichess')}
+              className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 cursor-pointer ${
+                activeTab === 'lichess'
+                  ? 'bg-chess-card text-white shadow-md border border-chess-border text-cyan-400'
+                  : 'text-gray-400 hover:text-gray-200 hover:bg-chess-card/40'
+              }`}
+            >
+              <Swords className="w-4 h-4 text-cyan-400" />
+              <span>Lichess</span>
+              <span className="hidden sm:inline-block px-1.5 py-0.2 rounded text-[10px] bg-cyan-500/20 text-cyan-400 font-bold">
+                Açık API
               </span>
             </button>
           </div>
@@ -157,8 +175,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onSelectGame }) => {
           {/* Active Tab Component */}
           {activeTab === 'pgn' ? (
             <PgnInputCard onSelectGame={onSelectGame} />
-          ) : (
+          ) : activeTab === 'chesscom' ? (
             <ChessComImporter onSelectGame={onSelectGame} />
+          ) : (
+            <LichessImporter onSelectGame={onSelectGame} />
           )}
         </section>
 

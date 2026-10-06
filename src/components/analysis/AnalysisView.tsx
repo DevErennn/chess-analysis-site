@@ -1,13 +1,34 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Chess } from 'chess.js';
-import { ArrowLeft, Copy, Check, Share2, Volume2, VolumeX, BookOpen } from 'lucide-react';
-import type { GameMetadata, MoveAnalysis, GameAnalysisResult } from '../../types/chess';
+import { 
+  ArrowLeft, 
+  Copy, 
+  Check, 
+  Share2, 
+  Volume2, 
+  VolumeX, 
+  BookOpen, 
+  FlaskConical, 
+  RotateCcw, 
+  X,
+  Target
+} from 'lucide-react';
+import type { 
+  GameMetadata, 
+  MoveAnalysis, 
+  GameAnalysisResult, 
+  ClassificationCount,
+  EngineEvaluation 
+} from '../../types/chess';
 import { getStockfishService } from '../../lib/stockfishService';
 import { 
   classifyMove, 
   calculateAccuracy, 
   countClassifications, 
-  generateCoachSummary 
+  generateCoachSummary,
+  detectTurningPoint,
+  detectMissedWins,
+  calculatePhaseAdvice
 } from '../../lib/moveClassifier';
 import { detectOpening } from '../../lib/openingExplorer';
 import { 
@@ -24,6 +45,8 @@ import { AnalysisControls } from './AnalysisControls';
 import { GameSummaryCard } from './GameSummaryCard';
 import { ClassificationBadge } from './ClassificationBadge';
 import { ShareReportModal } from './ShareReportModal';
+import { MistakePracticeModal } from './MistakePracticeModal';
+import { MultiPvPanel } from './MultiPvPanel';
 
 interface AnalysisViewProps {
   pgn: string;
@@ -44,6 +67,14 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
   const [analysisProgress, setAnalysisProgress] = useState(0);
   const [isMuted, setIsMuted] = useState<boolean>(() => isSoundMuted());
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [isMistakeTrainerOpen, setIsMistakeTrainerOpen] = useState(false);
+
+  // Interactive Sandbox ("Ne Olurdu?") mode state
+  const [isSandboxMode, setIsSandboxMode] = useState(false);
+  const [sandboxFen, setSandboxFen] = useState<string>('');
+  const [sandboxMoves, setSandboxMoves] = useState<{ san: string; from: string; to: string }[]>([]);
+  const [sandboxEval, setSandboxEval] = useState<EngineEvaluation | null>(null);
+  const [isSandboxThinking, setIsSandboxThinking] = useState(false);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const playTimerRef = useRef<number | null>(null);
@@ -102,14 +133,16 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
     const prev = prevStepRef.current;
     prevStepRef.current = currentStep;
 
-    if (currentStep > prev && currentStep > 0) {
-      const move = analyzedMoves[currentStep - 1];
-      const isGameOver = currentStep === fens.length - 1 && metadata.result !== '*';
-      playMoveAnalysisSound(move, isGameOver);
-    } else if (currentStep < prev) {
-      playMoveSound();
+    if (!isSandboxMode) {
+      if (currentStep > prev && currentStep > 0) {
+        const move = analyzedMoves[currentStep - 1];
+        const isGameOver = currentStep === fens.length - 1 && metadata.result !== '*';
+        playMoveAnalysisSound(move, isGameOver);
+      } else if (currentStep < prev) {
+        playMoveSound();
+      }
     }
-  }, [currentStep, analyzedMoves, fens.length, metadata.result]);
+  }, [currentStep, analyzedMoves, fens.length, metadata.result, isSandboxMode]);
 
   const handleToggleMute = useCallback(() => {
     const next = toggleSoundMuted();
@@ -122,13 +155,43 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
     return detectOpening(sans, metadata);
   }, [analyzedMoves, metadata]);
 
+  // Turning Point, Missed Wins & Phase Advice
+  const turningPoint = useMemo(() => detectTurningPoint(analyzedMoves), [analyzedMoves]);
+  const missedWins = useMemo(() => detectMissedWins(analyzedMoves), [analyzedMoves]);
+  const phaseAdvice = useMemo(() => calculatePhaseAdvice(analyzedMoves), [analyzedMoves]);
+
+  // Mistakes count for practice trainer
+  const mistakesCount = useMemo(() => {
+    return analyzedMoves.filter(
+      (m) =>
+        (m.classification === 'blunder' ||
+          m.classification === 'mistake' ||
+          m.classification === 'inaccuracy') &&
+        Boolean(m.bestMoveUci && m.bestMoveUci !== '(none)')
+    ).length;
+  }, [analyzedMoves]);
+
   // Computed analysis summary (Accuracy, counts, coach)
   const analysisResult: GameAnalysisResult = useMemo(() => {
     const accuracy = calculateAccuracy(analyzedMoves);
     const counts = countClassifications(analyzedMoves);
-    const coachSummary = generateCoachSummary(accuracy, counts, metadata.result);
-    return { moves: analyzedMoves, accuracy, counts, coachSummary };
-  }, [analyzedMoves, metadata.result]);
+    const coachSummary = generateCoachSummary(
+      accuracy, 
+      counts, 
+      metadata.result, 
+      turningPoint, 
+      phaseAdvice
+    );
+    return { 
+      moves: analyzedMoves, 
+      accuracy, 
+      counts, 
+      coachSummary,
+      turningPoint,
+      missedWins,
+      phaseAdvice,
+    };
+  }, [analyzedMoves, metadata.result, turningPoint, missedWins, phaseAdvice]);
 
   // Current FEN and active move
   const currentFen = fens[currentStep] || fens[0] || 'start';
@@ -214,17 +277,115 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
     setIsAnalyzing(false);
   }, []);
 
+  // Sandbox Mode Handlers
+  const handleStartSandbox = () => {
+    setIsPlaying(false);
+    setIsSandboxMode(true);
+    setSandboxFen(currentFen);
+    setSandboxMoves([]);
+    setSandboxEval(null);
+    setIsSandboxThinking(true);
+
+    getStockfishService().evaluatePosition(currentFen, 12, true).then((res) => {
+      setSandboxEval(res);
+      setIsSandboxThinking(false);
+    });
+  };
+
+  const handleExitSandbox = () => {
+    setIsSandboxMode(false);
+    setSandboxFen('');
+    setSandboxMoves([]);
+    setSandboxEval(null);
+    setIsSandboxThinking(false);
+  };
+
+  const handleResetSandbox = () => {
+    setSandboxFen(currentFen);
+    setSandboxMoves([]);
+    setIsSandboxThinking(true);
+    getStockfishService().evaluatePosition(currentFen, 12, true).then((res) => {
+      setSandboxEval(res);
+      setIsSandboxThinking(false);
+    });
+  };
+
+  const handleSandboxPieceDrop = (sourceSquare: string, targetSquare: string): boolean => {
+    try {
+      const chess = new Chess(sandboxFen);
+      const move = chess.move({
+        from: sourceSquare,
+        to: targetSquare,
+        promotion: 'q',
+      });
+      if (!move) return false;
+
+      const nextFen = chess.fen();
+      setSandboxFen(nextFen);
+      setSandboxMoves((prev) => [...prev, { san: move.san, from: sourceSquare, to: targetSquare }]);
+      playMoveSound();
+
+      setIsSandboxThinking(true);
+      getStockfishService().evaluatePosition(nextFen, 12, true).then((res) => {
+        setSandboxEval(res);
+        setIsSandboxThinking(false);
+      });
+
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  // Sandbox response arrow
+  const sandboxArrows = useMemo(() => {
+    if (!isSandboxMode || !sandboxEval?.bestMoveUci || sandboxEval.bestMoveUci === '(none)') {
+      return undefined;
+    }
+    const from = sandboxEval.bestMoveUci.slice(0, 2);
+    const to = sandboxEval.bestMoveUci.slice(2, 4);
+    return [
+      {
+        startSquare: from,
+        endSquare: to,
+        color: 'rgba(38, 194, 163, 0.95)',
+      },
+    ];
+  }, [isSandboxMode, sandboxEval]);
+
+  // Jump to specific classification moves
+  const lastJumpIndexRef = useRef<Record<string, number>>({});
+  const handleSelectClassification = (key: keyof ClassificationCount) => {
+    if (isSandboxMode) {
+      handleExitSandbox();
+    }
+    const matchingIndices: number[] = [];
+    analyzedMoves.forEach((m, idx) => {
+      if (m.classification === key) {
+        matchingIndices.push(idx + 1);
+      }
+    });
+
+    if (matchingIndices.length === 0) return;
+
+    const lastIdx = lastJumpIndexRef.current[key] ?? -1;
+    const nextIdx = (lastIdx + 1) % matchingIndices.length;
+    lastJumpIndexRef.current[key] = nextIdx;
+
+    setCurrentStep(matchingIndices[nextIdx]);
+  };
+
   // Navigation handlers
-  const handleFirst = () => setCurrentStep(0);
-  const handlePrev = () => setCurrentStep((p) => Math.max(0, p - 1));
-  const handleNext = () => setCurrentStep((p) => Math.min(fens.length - 1, p + 1));
-  const handleLast = () => setCurrentStep(fens.length - 1);
-  const handleTogglePlay = () => setIsPlaying((p) => !p);
+  const handleFirst = () => { if (isSandboxMode) handleExitSandbox(); setCurrentStep(0); };
+  const handlePrev = () => { if (isSandboxMode) handleExitSandbox(); setCurrentStep((p) => Math.max(0, p - 1)); };
+  const handleNext = () => { if (isSandboxMode) handleExitSandbox(); setCurrentStep((p) => Math.min(fens.length - 1, p + 1)); };
+  const handleLast = () => { if (isSandboxMode) handleExitSandbox(); setCurrentStep(fens.length - 1); };
+  const handleTogglePlay = () => { if (isSandboxMode) handleExitSandbox(); setIsPlaying((p) => !p); };
   const handleFlipBoard = () => setOrientation((p) => (p === 'white' ? 'black' : 'white'));
 
   // Auto-play timer
   useEffect(() => {
-    if (isPlaying) {
+    if (isPlaying && !isSandboxMode) {
       playTimerRef.current = window.setInterval(() => {
         setCurrentStep((prev) => {
           if (prev >= fens.length - 1) {
@@ -243,7 +404,7 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
         clearInterval(playTimerRef.current);
       }
     };
-  }, [isPlaying, fens.length]);
+  }, [isPlaying, fens.length, isSandboxMode]);
 
   // Trigger analysis automatically on first load
   useEffect(() => {
@@ -263,18 +424,23 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
 
       if (e.key === 'ArrowLeft') {
         e.preventDefault();
+        if (isSandboxMode) handleExitSandbox();
         setCurrentStep((p) => Math.max(0, p - 1));
       } else if (e.key === 'ArrowRight') {
         e.preventDefault();
+        if (isSandboxMode) handleExitSandbox();
         setCurrentStep((p) => Math.min(fens.length - 1, p + 1));
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
+        if (isSandboxMode) handleExitSandbox();
         setCurrentStep(0);
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
+        if (isSandboxMode) handleExitSandbox();
         setCurrentStep(fens.length - 1);
       } else if (e.key === ' ' || e.code === 'Space') {
         e.preventDefault();
+        if (isSandboxMode) handleExitSandbox();
         setIsPlaying((p) => !p);
       } else if (e.key.toLowerCase() === 'f') {
         e.preventDefault();
@@ -287,7 +453,7 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [fens.length, handleToggleMute]);
+  }, [fens.length, handleToggleMute, isSandboxMode]);
 
   const handleCopyPgn = async () => {
     try {
@@ -299,10 +465,11 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
     }
   };
 
-  const currentEvalCp = activeMove?.evalAfter ?? 0;
-  const currentEvalMate = activeMove?.mateAfter ?? null;
+  // Evaluation display scores
+  const currentEvalCp = isSandboxMode ? (sandboxEval?.cp ?? 0) : (activeMove?.evalAfter ?? 0);
+  const currentEvalMate = isSandboxMode ? (sandboxEval?.mate ?? null) : (activeMove?.mateAfter ?? null);
 
-  // Determine top and bottom players according to board orientation
+  // Players
   const isWhiteBottom = orientation === 'white';
   const topPlayer = isWhiteBottom ? metadata.black : metadata.white;
   const bottomPlayer = isWhiteBottom ? metadata.white : metadata.black;
@@ -344,9 +511,17 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
             {/* Accuracy quick pill */}
             <div className="hidden md:flex items-center gap-2 px-3 py-1 rounded-lg bg-chess-surface border border-chess-border text-xs font-mono">
               <span className="text-gray-400">Doğruluk:</span>
-              <span className="font-bold text-white">%{analysisResult.accuracy.white}</span>
-              <span className="text-gray-600">|</span>
-              <span className="font-bold text-white">%{analysisResult.accuracy.black}</span>
+              {isAnalyzing ? (
+                <span className="text-chess-accent font-semibold animate-pulse">
+                  Hesaplanıyor (%{analysisProgress})...
+                </span>
+              ) : (
+                <>
+                  <span className="font-bold text-white">%{analysisResult.accuracy.white}</span>
+                  <span className="text-gray-600">|</span>
+                  <span className="font-bold text-white">%{analysisResult.accuracy.black}</span>
+                </>
+              )}
             </div>
 
             {/* Sound Mute Toggle */}
@@ -362,6 +537,20 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
             >
               {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4 text-chess-accent" />}
             </button>
+
+            {/* Mistake Practice Trainer Button */}
+            {mistakesCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setIsMistakeTrainerOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-xs font-bold text-amber-300 transition-colors cursor-pointer shadow-sm hover:border-amber-400"
+                title="Hatalı pozisyonları bulmaca şeklinde çözün"
+              >
+                <Target className="w-3.5 h-3.5 text-amber-400" />
+                <span className="hidden sm:inline">🎯 Hatalarımdan Öğren ({mistakesCount} Pozisyon)</span>
+                <span className="sm:hidden font-mono font-bold">🎯 ({mistakesCount})</span>
+              </button>
+            )}
 
             {/* Share / Export Modal Button */}
             <button
@@ -398,10 +587,10 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
       </header>
 
       {/* Main Analysis Workspace */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 flex-1 w-full space-y-6">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-5 flex-1 w-full space-y-6">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Left Column: Board + Eval Bar + Graph */}
-          <div className="lg:col-span-7 flex flex-col items-center gap-3.5">
+          <div className="lg:col-span-7 flex flex-col items-center gap-3.5 lg:sticky lg:top-20">
             {/* Opening Tag Banner */}
             {openingInfo && (
               <div className="w-full max-w-[500px] flex items-center justify-between px-3.5 py-2 rounded-xl bg-chess-surface border border-chess-border text-xs shadow-sm">
@@ -420,7 +609,7 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
               </div>
             )}
 
-            {/* Top Player Info (Adapts to orientation) */}
+            {/* Top Player Info */}
             <div className="w-full max-w-[500px] flex items-center justify-between text-xs px-1">
               <div className="flex items-center gap-2">
                 <span
@@ -440,7 +629,7 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
               )}
             </div>
 
-            {/* Board and Eval Bar Area (Flex stretch for seamless responsive alignment) */}
+            {/* Board and Eval Bar Area */}
             <div className="w-full max-w-[500px] flex items-stretch gap-2.5 sm:gap-3">
               {/* Eval Bar */}
               <div className="self-stretch">
@@ -455,15 +644,18 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
               {/* Chessboard with interactive arrows */}
               <div className="flex-1 min-w-0">
                 <BoardWithArrows
-                  fen={currentFen}
+                  fen={isSandboxMode ? sandboxFen : currentFen}
                   orientation={orientation}
-                  activeMove={activeMove}
-                  showBestMoveArrow={true}
+                  activeMove={isSandboxMode ? undefined : activeMove}
+                  showBestMoveArrow={!isSandboxMode}
+                  isSandboxMode={isSandboxMode}
+                  onPieceDrop={handleSandboxPieceDrop}
+                  customArrows={isSandboxMode ? sandboxArrows : undefined}
                 />
               </div>
             </div>
 
-            {/* Bottom Player Info (Adapts to orientation) */}
+            {/* Bottom Player Info */}
             <div className="w-full max-w-[500px] flex items-center justify-between text-xs px-1">
               <div className="flex items-center gap-2">
                 <span
@@ -483,8 +675,88 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
               )}
             </div>
 
-            {/* Move Explanation Bar */}
-            {activeMove && (
+            {/* Sandbox Mode Active Bar OR "Ne Olurdu?" Starter Button */}
+            {isSandboxMode ? (
+              <div className="w-full max-w-[500px] p-3.5 rounded-2xl bg-indigo-950/40 border-2 border-indigo-500/60 shadow-xl space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <FlaskConical className="w-4 h-4 text-indigo-400 animate-spin" />
+                    <span className="text-xs font-bold text-indigo-300">Varyant Deneme Modu (Sandbox)</span>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-medium">
+                      Taşları sürükleyebilirsiniz
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={handleResetSandbox}
+                      className="p-1.5 rounded-lg bg-chess-card hover:bg-chess-cardHover border border-chess-border text-gray-300 hover:text-white text-xs cursor-pointer"
+                      title="Pozisyonu Sıfırla"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleExitSandbox}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs cursor-pointer shadow"
+                    >
+                      <X className="w-3 h-3" />
+                      <span>Analize Dön</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Sandbox Realtime Status */}
+                <div className="flex items-center justify-between text-xs bg-chess-surface/70 px-3 py-2 rounded-xl border border-indigo-500/30 font-mono">
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-400">Değerlendirme:</span>
+                    <span className="font-bold text-white">
+                      {isSandboxThinking ? (
+                        <span className="text-gray-400 animate-pulse">Hesaplanıyor...</span>
+                      ) : sandboxEval?.mate ? (
+                        <span className="text-amber-400">#{sandboxEval.mate > 0 ? `+${sandboxEval.mate}` : sandboxEval.mate}</span>
+                      ) : (
+                        <span className="text-emerald-400">
+                          {((sandboxEval?.cp ?? 0) / 100 > 0 ? '+' : '') + ((sandboxEval?.cp ?? 0) / 100).toFixed(2)}
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                  {sandboxEval?.bestMoveSan && (
+                    <div className="text-[11px] text-teal-300 font-sans">
+                      Motor Yanıtı: <strong className="font-mono text-white">{sandboxEval.bestMoveSan}</strong>
+                    </div>
+                  )}
+                </div>
+
+                {/* Sandbox Moves History */}
+                {sandboxMoves.length > 0 && (
+                  <div className="text-[11px] text-gray-300 flex items-center gap-1 flex-wrap">
+                    <span className="text-gray-500">Denenen hat:</span>
+                    {sandboxMoves.map((m, idx) => (
+                      <span key={idx} className="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-200 font-mono">
+                        {m.san}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="w-full max-w-[500px] flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={handleStartSandbox}
+                  className="w-full py-2 px-3 rounded-xl bg-chess-surface hover:bg-chess-surface/90 border border-chess-border hover:border-indigo-500/50 text-xs font-bold text-indigo-300 hover:text-indigo-200 flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm"
+                  title="Farklı bir hamle denemek için serbest modu açın"
+                >
+                  <FlaskConical className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>🧪 Bu hamleyi oynasaydım ne olurdu? (Varyant Dene)</span>
+                </button>
+              </div>
+            )}
+
+            {/* Move Explanation Bar (When not in sandbox) */}
+            {!isSandboxMode && activeMove && (
               <div className="w-full max-w-[500px] p-3 rounded-xl bg-chess-card border border-chess-border flex items-center justify-between gap-3 shadow-md">
                 <div className="flex items-center gap-2.5 overflow-hidden">
                   {activeMove.classification && (
@@ -507,6 +779,15 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
               </div>
             )}
 
+            {/* Multi-PV Top 3 Engine Lines Panel */}
+            <div className="w-full max-w-[500px]">
+              <MultiPvPanel
+                fen={isSandboxMode ? sandboxFen : currentFen}
+                isSandboxMode={isSandboxMode}
+                isAnalyzing={isAnalyzing}
+              />
+            </div>
+
             {/* Evaluation Timeline Graph */}
             <div className="w-full max-w-[500px]">
               <EvalGraph
@@ -527,14 +808,12 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
               isAnalyzing={isAnalyzing}
               analysisProgress={analysisProgress}
               depth={depth}
-              isMuted={isMuted}
               onFirst={handleFirst}
               onPrev={handlePrev}
               onNext={handleNext}
               onLast={handleLast}
               onTogglePlay={handleTogglePlay}
               onFlipBoard={handleFlipBoard}
-              onToggleMute={handleToggleMute}
               onStartAnalysis={startFullAnalysis}
               onStopAnalysis={stopAnalysis}
               onChangeDepth={setDepth}
@@ -544,7 +823,10 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
             <MoveHistoryTable
               moves={analyzedMoves}
               currentStep={currentStep}
-              onSelectStep={setCurrentStep}
+              onSelectStep={(step) => {
+                if (isSandboxMode) handleExitSandbox();
+                setCurrentStep(step);
+              }}
             />
 
             {/* Game Summary & Classification Counts */}
@@ -553,7 +835,19 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
               accuracy={analysisResult.accuracy}
               counts={analysisResult.counts}
               coachSummary={analysisResult.coachSummary}
+              turningPoint={analysisResult.turningPoint}
+              missedWins={analysisResult.missedWins}
+              phaseAdvice={analysisResult.phaseAdvice}
+              isAnalyzing={isAnalyzing}
+              analysisProgress={analysisProgress}
               onShare={() => setIsShareModalOpen(true)}
+              onOpenMistakes={() => setIsMistakeTrainerOpen(true)}
+              mistakesCount={mistakesCount}
+              onSelectStep={(step) => {
+                if (isSandboxMode) handleExitSandbox();
+                setCurrentStep(step);
+              }}
+              onSelectClassification={handleSelectClassification}
             />
           </div>
         </div>
@@ -566,6 +860,17 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
         metadata={metadata}
         analysisResult={analysisResult}
         openingInfo={openingInfo}
+      />
+
+      {/* Mistake Practice Trainer Modal */}
+      <MistakePracticeModal
+        isOpen={isMistakeTrainerOpen}
+        onClose={() => setIsMistakeTrainerOpen(false)}
+        moves={analyzedMoves}
+        onGoToMoveInGame={(moveIndex) => {
+          setIsMistakeTrainerOpen(false);
+          setCurrentStep(moveIndex + 1);
+        }}
       />
 
       {/* Footer */}

@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import type { MoveAnalysis } from '../../types/chess';
 import { calculateWinChance } from '../../lib/moveClassifier';
 
@@ -15,6 +15,8 @@ export const EvalGraph: React.FC<EvalGraphProps> = ({
   onSelectStep,
   height = 80,
 }) => {
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+
   // Construct array of points [initial position, ...after each move]
   const points = useMemo(() => {
     // Step 0 is initial position
@@ -39,9 +41,6 @@ export const EvalGraph: React.FC<EvalGraphProps> = ({
   const midY = graphHeight / 2;
 
   // Convert win chances (0-100) to SVG Y coordinates:
-  // 100% win chance -> Y = 4 (top)
-  // 50% win chance  -> Y = midY
-  // 0% win chance   -> Y = graphHeight - 4 (bottom)
   const coords = points.map((p, idx) => {
     const x = (idx / (totalPoints - 1)) * width;
     const y = graphHeight - (p / 100) * (graphHeight - 8) - 4;
@@ -57,17 +56,46 @@ export const EvalGraph: React.FC<EvalGraphProps> = ({
   const areaPath = `${linePath} L ${width} ${midY} L 0 ${midY} Z`;
 
   const currentCoord = coords[Math.min(currentStep, coords.length - 1)] || coords[0];
+  const activeHoverCoord = hoverIndex !== null ? coords[hoverIndex] : null;
+
+  // Hovered move details
+  const hoveredMove = hoverIndex !== null && hoverIndex > 0 ? moves[hoverIndex - 1] : undefined;
 
   return (
     <div className="w-full bg-chess-card border border-chess-border rounded-xl p-3 shadow-lg select-none">
-      <div className="flex items-center justify-between text-[11px] text-gray-400 mb-1 px-1">
+      <div className="flex items-center justify-between text-[11px] text-gray-400 mb-1.5 px-1 h-5">
         <span className="flex items-center gap-1.5 font-medium">
           <span className="w-2 h-2 rounded-full bg-chess-accent inline-block" />
-          Değerlendirme Akışı (CAPS)
+          <span>Değerlendirme Akışı (CAPS)</span>
         </span>
-        <span>
-          Hamle {Math.ceil(currentStep / 2)} / {Math.ceil(moves.length / 2)}
-        </span>
+
+        {/* Dynamic Tooltip / Current Step info */}
+        {hoverIndex !== null ? (
+          <span className="text-white font-mono text-[11px] bg-chess-surface px-2 py-0.5 rounded border border-chess-border flex items-center gap-1.5 shadow-sm">
+            {hoverIndex === 0 ? (
+              <span className="text-gray-300">Başlangıç (50-50)</span>
+            ) : hoveredMove ? (
+              <>
+                <strong className="text-chess-accent font-bold">
+                  {hoveredMove.moveNumber}{hoveredMove.color === 'w' ? '.' : '...'} {hoveredMove.san}
+                </strong>
+                <span className="text-gray-500">|</span>
+                <span className="text-emerald-400 font-semibold">
+                  %{activeHoverCoord?.winChance.toFixed(0)} Kazanma
+                </span>
+                {hoveredMove.evalAfter !== undefined && (
+                  <span className="text-gray-400 text-[10px]">
+                    ({(hoveredMove.evalAfter / 100 > 0 ? '+' : '') + (hoveredMove.evalAfter / 100).toFixed(1)})
+                  </span>
+                )}
+              </>
+            ) : null}
+          </span>
+        ) : (
+          <span className="font-mono text-gray-300 text-[11px]">
+            Hamle {currentStep === 0 ? 0 : moves[currentStep - 1]?.moveNumber ?? Math.ceil(currentStep / 2)} / {Math.ceil(moves.length / 2)}
+          </span>
+        )}
       </div>
 
       <div className="relative w-full overflow-hidden rounded-lg bg-chess-surface border border-chess-border/60">
@@ -75,6 +103,14 @@ export const EvalGraph: React.FC<EvalGraphProps> = ({
           viewBox={`0 0 ${width} ${graphHeight}`}
           className="w-full h-20 overflow-visible cursor-pointer"
           preserveAspectRatio="none"
+          onMouseMove={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect();
+            const clickX = e.clientX - rect.left;
+            const ratio = Math.max(0, Math.min(1, clickX / rect.width));
+            const targetStep = Math.round(ratio * (totalPoints - 1));
+            setHoverIndex(targetStep);
+          }}
+          onMouseLeave={() => setHoverIndex(null)}
           onClick={(e) => {
             const rect = e.currentTarget.getBoundingClientRect();
             const clickX = e.clientX - rect.left;
@@ -110,6 +146,30 @@ export const EvalGraph: React.FC<EvalGraphProps> = ({
             strokeLinecap="round"
             strokeLinejoin="round"
           />
+
+          {/* Hover indicator line & dot */}
+          {activeHoverCoord && (
+            <>
+              <line
+                x1={activeHoverCoord.x}
+                y1="0"
+                x2={activeHoverCoord.x}
+                y2={graphHeight}
+                stroke="#38bdf8"
+                strokeWidth="1.5"
+                strokeDasharray="3 3"
+                opacity="0.9"
+              />
+              <circle
+                cx={activeHoverCoord.x}
+                cy={activeHoverCoord.y}
+                r="4.5"
+                fill="#38bdf8"
+                stroke="#0f172a"
+                strokeWidth="1.5"
+              />
+            </>
+          )}
 
           {/* Current position indicator vertical line */}
           <line

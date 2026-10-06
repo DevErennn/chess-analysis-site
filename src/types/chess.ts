@@ -38,6 +38,47 @@ export interface EngineEvaluation {
   bestMoveSan?: string;
   depth: number;
   pv?: string;
+  isCloud?: boolean;
+}
+
+export interface MultiPvCandidate {
+  multipv: number;
+  cp?: number;
+  mate?: number | null;
+  bestMoveUci: string;
+  bestMoveSan: string;
+  depth: number;
+  pv: string;
+  pvSanList?: string[];
+}
+
+export interface TurningPoint {
+  moveIndex: number;
+  moveNumber: number;
+  color: 'w' | 'b';
+  san: string;
+  from: string;
+  to: string;
+  evalBefore: number;
+  evalAfter: number;
+  winChanceLoss: number;
+  description: string;
+}
+
+export interface MissedWin {
+  moveIndex: number;
+  moveNumber: number;
+  color: 'w' | 'b';
+  san: string;
+  bestMoveSan?: string;
+  description: string;
+}
+
+export interface PhaseAdvice {
+  opening: { score: number; comment: string };
+  middlegame: { score: number; comment: string };
+  endgame: { score: number; comment: string };
+  weakestPhase: 'opening' | 'middlegame' | 'endgame';
 }
 
 export interface ClassificationCount {
@@ -65,6 +106,9 @@ export interface GameAnalysisResult {
     black: ClassificationCount;
   };
   coachSummary: string;
+  turningPoint?: TurningPoint | null;
+  missedWins?: MissedWin[];
+  phaseAdvice?: PhaseAdvice;
 }
 
 export interface GameMetadata {
