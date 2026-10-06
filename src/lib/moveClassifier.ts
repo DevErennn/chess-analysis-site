@@ -1,3 +1,4 @@
+import { Chess } from 'chess.js';
 import type {
   MoveAnalysis,
   MoveClassification,
@@ -25,44 +26,66 @@ export function calculateWinChance(cp?: number, mate?: number | null): number {
 }
 
 /**
- * Checks if a move sacrificed material (piece value went down without immediate recapture).
+ * Checks if a move sacrificed material (piece value placed on attacked square by lesser piece or hanging).
  */
 function isMaterialSacrifice(
   fenBefore: string,
   fenAfter: string,
-  color: 'w' | 'b'
+  _color: 'w' | 'b',
+  from: string,
+  to: string
 ): boolean {
-  const pieceValues: Record<string, number> = {
-    p: 1,
-    n: 3,
-    b: 3,
-    r: 5,
-    q: 9,
-    k: 0,
-  };
+  try {
+    const chessBefore = new Chess(fenBefore);
+    const piece = chessBefore.get(from as any);
+    if (!piece) return false;
 
-  const getMaterial = (fen: string, col: 'w' | 'b'): number => {
-    const board = fen.split(' ')[0];
-    let total = 0;
-    for (const ch of board) {
-      const isWhite = ch >= 'A' && ch <= 'Z';
-      const pieceCol = isWhite ? 'w' : 'b';
-      if (pieceCol === col) {
-        total += pieceValues[ch.toLowerCase()] || 0;
+    // Pawns and Kings are not piece sacrifices
+    if (piece.type === 'p' || piece.type === 'k') return false;
+
+    const pieceValues: Record<string, number> = { n: 3, b: 3, r: 5, q: 9 };
+    const myPieceVal = pieceValues[piece.type] || 0;
+
+    const chessAfter = new Chess(fenAfter);
+    const legalOpponentMoves = chessAfter.moves({ verbose: true });
+    const capturingMoves = legalOpponentMoves.filter((m) => m.to === to);
+
+    if (capturingMoves.length > 0) {
+      // 1. Captured by pawn: true sacrifice
+      const pawnCapture = capturingMoves.some((m) => m.piece === 'p');
+      if (pawnCapture) return true;
+
+      // 2. Captured by a lesser piece (e.g. Queen or Rook attacked by Bishop/Knight)
+      const lesserPieceCapture = capturingMoves.some((m) => {
+        const capturerVal = pieceValues[m.piece] || 1;
+        return capturerVal < myPieceVal;
+      });
+      if (lesserPieceCapture) return true;
+
+      // 3. Left en prise with more attackers than defenders
+      const myDefenders = chessBefore.moves({ verbose: true }).filter((m) => m.to === to);
+      if (capturingMoves.length > myDefenders.length) {
+        return true;
       }
     }
-    return total;
-  };
 
-  const matBefore = getMaterial(fenBefore, color);
-  const matAfter = getMaterial(fenAfter, color);
+    // 4. Exchange sacrifice: Rook captures minor piece, or Queen captures minor/rook
+    const captured = chessBefore.get(to as any);
+    if (captured && piece.type === 'r' && (captured.type === 'n' || captured.type === 'b' || captured.type === 'p')) {
+      return true;
+    }
+    if (captured && piece.type === 'q' && captured.type !== 'q') {
+      return true;
+    }
 
-  // If lost at least 2 points of material (e.g. piece or exchange)
-  return matBefore - matAfter >= 2;
+    return false;
+  } catch {
+    return false;
+  }
 }
 
 /**
- * Classifies a move according to Win Chance Loss and tactical context.
+ * Classifies a move according to Win Chance Loss, tactical context, and Chess.com standards.
  */
 export function classifyMove(
   _moveSan: string,
@@ -97,8 +120,8 @@ export function classifyMove(
   let classification: MoveClassification = 'good';
   let comment = '';
 
-  // Book moves (first 4-6 plies standard opening)
-  if (moveIndex < 6 && winLoss < 2.0) {
+  // Book moves (first 4-6 plies standard opening without blunders)
+  if (moveIndex < 6 && winLoss <= 1.5) {
     classification = 'book';
     comment = 'Kitap hamlesi / Açılış teorisi';
     return {
@@ -111,11 +134,11 @@ export function classifyMove(
   }
 
   // Brilliant (!!) check:
-  // Must be best move or near best, involves material sacrifice, and position remains winning or solid (>45% win chance)
-  if (isBestMove && winLoss < 1.0 && playerWinAfter >= 45) {
-    if (isMaterialSacrifice(fenBefore, fenAfter, color)) {
+  // Must be best move, involves a genuine material sacrifice, and position remains winning or advantageous (>45% win chance)
+  if (isBestMove && winLoss <= 1.0 && playerWinAfter >= 45) {
+    if (isMaterialSacrifice(fenBefore, fenAfter, color, from, to)) {
       classification = 'brilliant';
-      comment = 'Göz alıcı bir feda ve taktiksel üstünlük!';
+      comment = '!! Göz alıcı bir feda ve taktiksel üstünlük!';
       return {
         classification,
         winChanceBefore: playerWinBefore,
@@ -127,10 +150,10 @@ export function classifyMove(
   }
 
   // Great move (!) check:
-  // Sole winning or drawing move in difficult situation
-  if (isBestMove && winLoss < 1.0 && playerWinBefore < 50 && playerWinAfter >= 50) {
+  // Sole game-turning or position-saving best move
+  if (isBestMove && winLoss <= 1.0 && playerWinBefore < 48 && playerWinAfter >= 50) {
     classification = 'great';
-    comment = 'Pozisyonu tersine çeviren harika bir hamle!';
+    comment = '! Pozisyonu tersine çeviren harika bir hamle!';
     return {
       classification,
       winChanceBefore: playerWinBefore,
@@ -140,20 +163,21 @@ export function classifyMove(
     };
   }
 
-  // Standard thresholds
-  if (isBestMove || winLoss < 1.2) {
+  // Standard Chess.com categorization:
+  // ONLY the engine's best move gets 'best' (⭐)
+  if (isBestMove) {
     classification = 'best';
     comment = 'Motorun önerdiği en iyi hamle.';
-  } else if (winLoss < 3.5) {
+  } else if (winLoss <= 2.5) {
     classification = 'excellent';
     comment = 'Çok güçlü bir alternatif hamle.';
-  } else if (winLoss < 7.5) {
+  } else if (winLoss <= 6.5) {
     classification = 'good';
     comment = 'Sağlam ve güvenli hamle.';
-  } else if (winLoss < 15.0) {
+  } else if (winLoss <= 14.0) {
     classification = 'inaccuracy';
     comment = 'Küçük bir avantaj kaybı (Şüpheli).';
-  } else if (winLoss < 26.0) {
+  } else if (winLoss <= 24.0) {
     classification = 'mistake';
     comment = 'Pozisyonel veya taktiksel hata.';
   } else {
@@ -183,8 +207,17 @@ export function calculateAccuracy(moves: MoveAnalysis[]): GameAccuracy {
 
     let total = 0;
     for (const m of list) {
+      if (m.classification === 'book') {
+        total += 100;
+        continue;
+      }
+      if (m.classification === 'brilliant' || m.classification === 'great' || m.classification === 'best') {
+        total += 100;
+        continue;
+      }
+
       const loss = m.winChanceLoss ?? 0;
-      // Formula: 103.1668 * exp(-0.04354 * loss) - 3.1668
+      // Chess.com CAPS2 formula: 103.1668 * exp(-0.04354 * loss) - 3.1668
       const moveScore = Math.max(0, Math.min(100, 103.1668 * Math.exp(-0.04354 * loss) - 3.1668));
       total += moveScore;
     }
@@ -245,22 +278,30 @@ export function generateCoachSummary(
 
   let summary = '';
   if (winner === 'Beyaz') {
-    summary += `Beyaz %${accuracy.white} doğruluk ile üstün bir oyun sergiledi. `;
+    summary += `Beyaz %${accuracy.white} doğruluk ile galip geldi. `;
   } else if (winner === 'Siyah') {
-    summary += `Siyah %${accuracy.black} doğruluk ile rakibini etkisiz hale getirdi. `;
+    summary += `Siyah %${accuracy.black} doğruluk ile galip geldi. `;
   } else {
-    summary += `İki taraf da başa baş bir mücadele verdi (Beyaz: %${accuracy.white}, Siyah: %${accuracy.black}). `;
+    summary += `İki taraf da mücadeleci bir oyun sergiledi (Beyaz: %${accuracy.white}, Siyah: %${accuracy.black}). `;
   }
 
   const whiteBlunders = counts.white.blunder;
   const blackBlunders = counts.black.blunder;
+  const whiteMistakes = counts.white.mistake;
+  const blackMistakes = counts.black.mistake;
 
   if (whiteBlunders === 0 && blackBlunders === 0) {
-    summary += 'Her iki oyuncu da büyük gaflardan kaçınarak temiz bir oyun oynadı.';
-  } else if (whiteBlunders > blackBlunders) {
-    summary += `Beyaz'ın yaptığı ${whiteBlunders} büyük hata oyunun kaderini belirledi.`;
+    if (whiteMistakes > 0 || blackMistakes > 0) {
+      summary += 'Oyuncular büyük gaflardan kaçındı ancak pozisyonel hatalar oyunun sonucunu etkiledi.';
+    } else {
+      summary += 'Her iki oyuncu da temiz ve dikkatli bir oyun oynadı.';
+    }
   } else if (blackBlunders > whiteBlunders) {
-    summary += `Siyah'ın yaptığı ${blackBlunders} büyük hata Beyaz'a kazanç fırsatları sundu.`;
+    summary += `Siyah'ın yaptığı ${blackBlunders} büyük hata Beyaz'a kritik üstünlük sağladı.`;
+  } else if (whiteBlunders > blackBlunders) {
+    summary += `Beyaz'ın yaptığı ${whiteBlunders} büyük hata Siyah'a önemli fırsatlar sundu.`;
+  } else {
+    summary += `Her iki tarafın yaptığı hatalar maçın dengesini sık sık değiştirdi.`;
   }
 
   if (counts.white.brilliant > 0 || counts.black.brilliant > 0) {

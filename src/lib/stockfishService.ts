@@ -25,17 +25,29 @@ export class StockfishService {
 
   private initWorker() {
     try {
-      // Primary: local public Stockfish worker
-      this.worker = new Worker('/stockfish/stockfish.js');
+      const wasmSupported =
+        typeof WebAssembly === 'object' &&
+        typeof WebAssembly.validate === 'function';
+      // Use WebAssembly worker when supported for 10x performance and accuracy
+      const workerUrl = wasmSupported
+        ? '/stockfish/stockfish.wasm.js'
+        : '/stockfish/stockfish.js';
+      this.worker = new Worker(workerUrl);
     } catch {
       try {
-        // Fallback: CDN Stockfish worker via Blob
-        const blob = new Blob([
-          `importScripts('https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js');`
-        ], { type: 'application/javascript' });
-        this.worker = new Worker(URL.createObjectURL(blob));
-      } catch (err2) {
-        console.error('Failed to initialize Stockfish worker:', err2);
+        this.worker = new Worker('/stockfish/stockfish.js');
+      } catch {
+        try {
+          const blob = new Blob(
+            [
+              `importScripts('https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js');`,
+            ],
+            { type: 'application/javascript' }
+          );
+          this.worker = new Worker(URL.createObjectURL(blob));
+        } catch (err2) {
+          console.error('Failed to initialize Stockfish worker:', err2);
+        }
       }
     }
 
@@ -44,13 +56,23 @@ export class StockfishService {
         this.readyResolver = resolve;
       });
 
+      this.worker.onerror = (err) => {
+        console.error('Stockfish worker error:', err);
+      };
+
       this.worker.onmessage = (e: MessageEvent) => {
-        const line = typeof e.data === 'string' ? e.data : '';
-        if (line === 'uciok' || line === 'readyok') {
-          this.isReady = true;
-          if (this.readyResolver) {
-            this.readyResolver();
-            this.readyResolver = null;
+        const raw = typeof e.data === 'string' ? e.data : '';
+        const lines = raw.split(/\r?\n/);
+        for (const singleLine of lines) {
+          const line = singleLine.trim();
+          if (!line) continue;
+
+          if (line === 'uciok' || line === 'readyok') {
+            this.isReady = true;
+            if (this.readyResolver) {
+              this.readyResolver();
+              this.readyResolver = null;
+            }
           }
         }
       };
@@ -65,7 +87,7 @@ export class StockfishService {
     if (this.readyPromise) {
       await Promise.race([
         this.readyPromise,
-        new Promise((resolve) => setTimeout(resolve, 3000)), // 3s timeout
+        new Promise((resolve) => setTimeout(resolve, 3000)),
       ]);
       this.isReady = true;
     }
@@ -101,74 +123,128 @@ export class StockfishService {
         return;
       }
 
+      // Pre-check for terminal game positions (checkmate or draw)
+      try {
+        const testChess = new Chess(fen);
+        if (testChess.isCheckmate()) {
+          const turn = fen.split(' ')[1] || 'w';
+          const mateScore = turn === 'w' ? -1 : 1; // if it's White's turn, White is checkmated
+          resolve({
+            cp: mateScore > 0 ? 10000 : -10000,
+            mate: mateScore,
+            depth,
+            bestMoveUci: '',
+            bestMoveSan: '',
+          });
+          return;
+        }
+        if (testChess.isDraw()) {
+          resolve({
+            cp: 0,
+            mate: null,
+            depth,
+            bestMoveUci: '',
+            bestMoveSan: '',
+          });
+          return;
+        }
+      } catch {
+        // Proceed with engine
+      }
+
       const turn = fen.split(' ')[1] || 'w';
       let lastCp: number | undefined = undefined;
       let lastMate: number | null | undefined = undefined;
       let lastPv: string | undefined = undefined;
       let bestMoveUci = '';
+      let isResolved = false;
+
+      const finish = (result: EngineEvaluation) => {
+        if (isResolved) return;
+        isResolved = true;
+        if (timeoutId) clearTimeout(timeoutId);
+        this.worker?.removeEventListener('message', messageHandler);
+        resolve(result);
+      };
+
+      // Safety timeout: 4.5s max per move
+      const timeoutId = setTimeout(() => {
+        finish({
+          cp: lastCp ?? 0,
+          mate: lastMate ?? null,
+          bestMoveUci: bestMoveUci || '',
+          bestMoveSan: '',
+          depth,
+          pv: lastPv,
+        });
+      }, 4500);
 
       const messageHandler = (e: MessageEvent) => {
-        const line = typeof e.data === 'string' ? e.data : '';
+        const raw = typeof e.data === 'string' ? e.data : '';
+        const lines = raw.split(/\r?\n/);
 
-        // Example line: "info depth 12 seldepth 14 score cp 45 nodes 1823 pv e2e4 e7e5"
-        if (line.startsWith('info') && line.includes('score')) {
-          const cpMatch = line.match(/score cp (-?\d+)/);
-          const mateMatch = line.match(/score mate (-?\d+)/);
-          const pvMatch = line.match(/ pv (.*)$/);
+        for (const singleLine of lines) {
+          const line = singleLine.trim();
+          if (!line) continue;
 
-          if (cpMatch) {
-            const rawCp = parseInt(cpMatch[1], 10);
-            // Stockfish reports score from the moving side's perspective
-            lastCp = turn === 'w' ? rawCp : -rawCp;
-            lastMate = null;
-          } else if (mateMatch) {
-            const rawMate = parseInt(mateMatch[1], 10);
-            lastMate = turn === 'w' ? rawMate : -rawMate;
-            // Approximate cp for mate: 10000 / mate
-            lastCp = lastMate > 0 ? 10000 : -10000;
-          }
+          // Parse info score
+          if (line.startsWith('info') && line.includes('score')) {
+            const cpMatch = line.match(/score cp (-?\d+)/);
+            const mateMatch = line.match(/score mate (-?\d+)/);
+            const pvMatch = line.match(/ pv (.*)$/);
 
-          if (pvMatch) {
-            lastPv = pvMatch[1];
-          }
-        }
-
-        // Example line: "bestmove e2e4 ponder e7e5"
-        if (line.startsWith('bestmove')) {
-          this.worker?.removeEventListener('message', messageHandler);
-          const parts = line.split(' ');
-          bestMoveUci = parts[1] || '';
-
-          // Convert UCI to SAN
-          let bestMoveSan = bestMoveUci;
-          try {
-            if (bestMoveUci && bestMoveUci !== '(none)') {
-              const chess = new Chess(fen);
-              const from = bestMoveUci.slice(0, 2);
-              const to = bestMoveUci.slice(2, 4);
-              const promotion = bestMoveUci.length > 4 ? bestMoveUci.slice(4, 5) : undefined;
-              const moveRes = chess.move({ from, to, promotion });
-              if (moveRes) {
-                bestMoveSan = moveRes.san;
-              }
+            if (cpMatch) {
+              const rawCp = parseInt(cpMatch[1], 10);
+              // Stockfish reports score from the moving side's perspective
+              lastCp = turn === 'w' ? rawCp : -rawCp;
+              lastMate = null;
+            } else if (mateMatch) {
+              const rawMate = parseInt(mateMatch[1], 10);
+              lastMate = turn === 'w' ? rawMate : -rawMate;
+              lastCp = lastMate > 0 ? 10000 : -10000;
             }
-          } catch {
-            // Keep UCI as fallback
+
+            if (pvMatch) {
+              lastPv = pvMatch[1];
+            }
           }
 
-          resolve({
-            cp: lastCp ?? 0,
-            mate: lastMate ?? null,
-            bestMoveUci,
-            bestMoveSan,
-            depth,
-            pv: lastPv,
-          });
+          // Parse bestmove
+          if (line.startsWith('bestmove')) {
+            const parts = line.split(' ');
+            bestMoveUci = parts[1] || '';
+
+            // Convert UCI to SAN
+            let bestMoveSan = bestMoveUci;
+            try {
+              if (bestMoveUci && bestMoveUci !== '(none)') {
+                const chess = new Chess(fen);
+                const from = bestMoveUci.slice(0, 2);
+                const to = bestMoveUci.slice(2, 4);
+                const promotion = bestMoveUci.length > 4 ? bestMoveUci.slice(4, 5) : undefined;
+                const moveRes = chess.move({ from, to, promotion });
+                if (moveRes) {
+                  bestMoveSan = moveRes.san;
+                }
+              }
+            } catch {
+              // fallback
+            }
+
+            finish({
+              cp: lastCp ?? 0,
+              mate: lastMate ?? null,
+              bestMoveUci,
+              bestMoveSan,
+              depth,
+              pv: lastPv,
+            });
+            return;
+          }
         }
       };
 
       this.worker.addEventListener('message', messageHandler);
-
       this.worker.postMessage(`position fen ${fen}`);
       this.worker.postMessage(`go depth ${depth}`);
     });
@@ -185,6 +261,12 @@ export class StockfishService {
     const results: EngineEvaluation[] = [];
     const total = fens.length;
     const depth = options.depth || 12;
+
+    if (this.worker) {
+      this.worker.postMessage('ucinewgame');
+      this.worker.postMessage('isready');
+      await new Promise((r) => setTimeout(r, 40));
+    }
 
     for (let i = 0; i < total; i++) {
       if (options.signal?.aborted) {

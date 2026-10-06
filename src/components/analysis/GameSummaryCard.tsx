@@ -20,6 +20,7 @@ const ORDERED_KEYS: (keyof ClassificationCount)[] = [
   'best',
   'excellent',
   'good',
+  'book',
   'inaccuracy',
   'mistake',
   'blunder',
@@ -101,8 +102,9 @@ export const GameSummaryCard: React.FC<GameSummaryCardProps> = ({
             const whiteCount = counts.white[key] || 0;
             const blackCount = counts.black[key] || 0;
 
-            if (whiteCount === 0 && blackCount === 0 && (key === 'brilliant' || key === 'great')) {
-              return null; // hide 0 brilliant/great if none happened
+            // Only hide book/great if both players have 0; NEVER hide brilliant or standard error categories
+            if (whiteCount === 0 && blackCount === 0 && (key === 'great' || key === 'book')) {
+              return null;
             }
 
             const Icon = config.icon;
@@ -121,7 +123,7 @@ export const GameSummaryCard: React.FC<GameSummaryCardProps> = ({
                 <div className="flex items-center gap-2 flex-1 justify-center">
                   <Icon className={`w-3.5 h-3.5 ${config.textColor}`} />
                   <span className={`font-semibold ${config.textColor}`}>
-                    {config.label} ({config.symbol})
+                    {key === 'brilliant' ? '!! Brilliant (Göz Alıcı)' : `${config.label} (${config.symbol})`}
                   </span>
                 </div>
 
