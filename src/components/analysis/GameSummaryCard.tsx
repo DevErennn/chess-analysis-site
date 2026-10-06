@@ -1,7 +1,7 @@
 import React from 'react';
 import type { GameAccuracy, ClassificationCount, GameMetadata } from '../../types/chess';
 import { CLASSIFICATION_CONFIG } from './constants';
-import { Trophy, Award, MessageSquare } from 'lucide-react';
+import { Trophy, Award, MessageSquare, Share2 } from 'lucide-react';
 
 interface GameSummaryCardProps {
   metadata: GameMetadata;
@@ -11,6 +11,7 @@ interface GameSummaryCardProps {
     black: ClassificationCount;
   };
   coachSummary: string;
+  onShare?: () => void;
 }
 
 const ORDERED_KEYS: (keyof ClassificationCount)[] = [
@@ -19,6 +20,7 @@ const ORDERED_KEYS: (keyof ClassificationCount)[] = [
   'best',
   'excellent',
   'good',
+  'book',
   'inaccuracy',
   'mistake',
   'blunder',
@@ -29,6 +31,7 @@ export const GameSummaryCard: React.FC<GameSummaryCardProps> = ({
   accuracy,
   counts,
   coachSummary,
+  onShare,
 }) => {
   return (
     <div className="bg-chess-card border border-chess-border rounded-2xl p-5 shadow-xl space-y-5">
@@ -99,8 +102,9 @@ export const GameSummaryCard: React.FC<GameSummaryCardProps> = ({
             const whiteCount = counts.white[key] || 0;
             const blackCount = counts.black[key] || 0;
 
-            if (whiteCount === 0 && blackCount === 0 && (key === 'brilliant' || key === 'great')) {
-              return null; // hide 0 brilliant/great if none happened
+            // Only hide book/great if both players have 0; NEVER hide brilliant or standard error categories
+            if (whiteCount === 0 && blackCount === 0 && (key === 'great' || key === 'book')) {
+              return null;
             }
 
             const Icon = config.icon;
@@ -119,7 +123,7 @@ export const GameSummaryCard: React.FC<GameSummaryCardProps> = ({
                 <div className="flex items-center gap-2 flex-1 justify-center">
                   <Icon className={`w-3.5 h-3.5 ${config.textColor}`} />
                   <span className={`font-semibold ${config.textColor}`}>
-                    {config.label} ({config.symbol})
+                    {key === 'brilliant' ? '!! Brilliant (Göz Alıcı)' : `${config.label} (${config.symbol})`}
                   </span>
                 </div>
 
@@ -132,6 +136,18 @@ export const GameSummaryCard: React.FC<GameSummaryCardProps> = ({
           })}
         </div>
       </div>
+
+      {/* Share / Export Action Button */}
+      {onShare && (
+        <button
+          type="button"
+          onClick={onShare}
+          className="w-full py-2.5 px-4 rounded-xl bg-chess-surface hover:bg-chess-surface/90 border border-chess-border text-xs font-bold text-gray-200 hover:text-white flex items-center justify-center gap-2 transition-all cursor-pointer shadow hover:border-chess-accent/50"
+        >
+          <Share2 className="w-4 h-4 text-chess-accent" />
+          <span>Raporu Paylaş & PGN İndir</span>
+        </button>
+      )}
     </div>
   );
 };

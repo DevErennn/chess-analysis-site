@@ -9,7 +9,9 @@ import {
   RotateCcw, 
   Cpu, 
   Square,
-  Sparkles
+  Sparkles,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 
 interface AnalysisControlsProps {
@@ -19,12 +21,14 @@ interface AnalysisControlsProps {
   isAnalyzing: boolean;
   analysisProgress: number; // 0 - 100
   depth: number;
+  isMuted?: boolean;
   onFirst: () => void;
   onPrev: () => void;
   onNext: () => void;
   onLast: () => void;
   onTogglePlay: () => void;
   onFlipBoard: () => void;
+  onToggleMute?: () => void;
   onStartAnalysis: () => void;
   onStopAnalysis: () => void;
   onChangeDepth: (depth: number) => void;
@@ -37,12 +41,14 @@ export const AnalysisControls: React.FC<AnalysisControlsProps> = ({
   isAnalyzing,
   analysisProgress,
   depth,
+  isMuted = false,
   onFirst,
   onPrev,
   onNext,
   onLast,
   onTogglePlay,
   onFlipBoard,
+  onToggleMute,
   onStartAnalysis,
   onStopAnalysis,
   onChangeDepth,
@@ -114,10 +120,25 @@ export const AnalysisControls: React.FC<AnalysisControlsProps> = ({
           type="button"
           onClick={onFlipBoard}
           className="p-2 rounded-lg bg-chess-card hover:bg-chess-cardHover border border-chess-border text-gray-200 transition-colors cursor-pointer"
-          title="Tahtayı Döndür"
+          title="Tahtayı Döndür (F Tuşu)"
         >
           <RotateCcw className="w-4 h-4" />
         </button>
+
+        {onToggleMute && (
+          <button
+            type="button"
+            onClick={onToggleMute}
+            className={`p-2 rounded-lg border transition-colors cursor-pointer ${
+              isMuted
+                ? 'bg-red-500/10 text-red-400 border-red-500/30 hover:bg-red-500/20'
+                : 'bg-chess-card hover:bg-chess-cardHover border border-chess-border text-gray-200'
+            }`}
+            title={isMuted ? 'Sesi Aç' : 'Sesi Kapat'}
+          >
+            {isMuted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+          </button>
+        )}
       </div>
 
       {/* Stockfish Engine Controls & Progress */}

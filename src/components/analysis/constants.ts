@@ -15,7 +15,7 @@ export const CLASSIFICATION_CONFIG: Record<
   }
 > = {
   brilliant: {
-    label: 'Göz Alıcı',
+    label: 'Brilliant (Göz Alıcı)',
     symbol: '!!',
     color: '#26c2a3',
     bgColor: 'bg-teal-500/20',
