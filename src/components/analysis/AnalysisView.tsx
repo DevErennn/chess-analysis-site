@@ -21,7 +21,6 @@ import type {
   EngineEvaluation,
   EngineProfileId
 } from '../../types/chess';
-import { ENGINE_PROFILES } from '../../lib/engineProfiles';
 import { getStockfishService } from '../../lib/stockfishService';
 import { 
   classifyMove, 
@@ -49,6 +48,7 @@ import { ClassificationBadge } from './ClassificationBadge';
 import { ShareReportModal } from './ShareReportModal';
 import { MistakePracticeModal } from './MistakePracticeModal';
 import { MultiPvPanel } from './MultiPvPanel';
+import { DebugTable } from './DebugTable';
 
 interface AnalysisViewProps {
   pgn: string;
@@ -71,6 +71,11 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
   const [isMuted, setIsMuted] = useState<boolean>(() => isSoundMuted());
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [isMistakeTrainerOpen, setIsMistakeTrainerOpen] = useState(false);
+  const [isDebugMode, setIsDebugMode] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    const params = new URLSearchParams(window.location.search);
+    return params.get('debug') === '1' || params.get('debug') === 'true';
+  });
 
   // Interactive Sandbox ("Ne Olurdu?") mode state
   const [isSandboxMode, setIsSandboxMode] = useState(false);
@@ -214,12 +219,10 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
     const updatedMoves = [...initialMoves];
 
     try {
-      const prof = ENGINE_PROFILES[profileId] || ENGINE_PROFILES['stockfish-16'];
       // Analyze all positions (N+1 FENs)
       const evals = await stockfish.analyzePositions(fens, {
         depth,
         profileId,
-        tacticalBoost: prof.tacticalBoost,
         signal: controller.signal,
         onProgress: (prog) => {
           setAnalysisProgress(prog.percent);
@@ -227,6 +230,7 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
       });
 
       if (!controller.signal.aborted && evals.length === fens.length) {
+        const allSans = updatedMoves.map((item) => item.san);
         // Classify each move
         for (let i = 0; i < updatedMoves.length; i++) {
           const m = updatedMoves[i];
@@ -243,7 +247,8 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
               m.fenAfter,
               evalBefore,
               evalAfter,
-              i
+              i,
+              allSans
             );
 
             updatedMoves[i] = {
@@ -869,6 +874,20 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
             />
           </div>
         </div>
+
+        {/* Developer Diagnostics Debug Table */}
+        {isDebugMode && (
+          <div className="w-full pt-4">
+            <DebugTable
+              moves={analyzedMoves}
+              currentStep={currentStep}
+              onSelectStep={(step) => {
+                if (isSandboxMode) handleExitSandbox();
+                setCurrentStep(step);
+              }}
+            />
+          </div>
+        )}
       </main>
 
       {/* Share & Export Report Modal */}
@@ -892,8 +911,17 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
       />
 
       {/* Footer */}
-      <footer className="border-t border-chess-border/60 py-4 text-center text-xs text-gray-500 bg-chess-surface/40">
-        Klavye Kısayolları: <kbd className="px-1.5 py-0.5 rounded bg-chess-card border border-chess-border text-gray-300">←</kbd> Önceki, <kbd className="px-1.5 py-0.5 rounded bg-chess-card border border-chess-border text-gray-300">→</kbd> Sonraki, <kbd className="px-1.5 py-0.5 rounded bg-chess-card border border-chess-border text-gray-300">Boşluk</kbd> Oynat/Durdur, <kbd className="px-1.5 py-0.5 rounded bg-chess-card border border-chess-border text-gray-300">F</kbd> Çevir, <kbd className="px-1.5 py-0.5 rounded bg-chess-card border border-chess-border text-gray-300">M</kbd> Ses
+      <footer className="border-t border-chess-border/60 py-4 text-center text-xs text-gray-500 bg-chess-surface/40 flex flex-col sm:flex-row items-center justify-between px-6 gap-2">
+        <div>
+          Klavye Kısayolları: <kbd className="px-1.5 py-0.5 rounded bg-chess-card border border-chess-border text-gray-300">←</kbd> Önceki, <kbd className="px-1.5 py-0.5 rounded bg-chess-card border border-chess-border text-gray-300">→</kbd> Sonraki, <kbd className="px-1.5 py-0.5 rounded bg-chess-card border border-chess-border text-gray-300">Boşluk</kbd> Oynat/Durdur, <kbd className="px-1.5 py-0.5 rounded bg-chess-card border border-chess-border text-gray-300">F</kbd> Çevir, <kbd className="px-1.5 py-0.5 rounded bg-chess-card border border-chess-border text-gray-300">M</kbd> Ses
+        </div>
+        <button
+          type="button"
+          onClick={() => setIsDebugMode((p) => !p)}
+          className="text-amber-400 hover:text-amber-300 font-mono text-[11px] underline cursor-pointer"
+        >
+          {isDebugMode ? '🛠️ Debug Tablosunu Gizle' : '🛠️ Debug Tablosu (?debug=1)'}
+        </button>
       </footer>
     </div>
   );

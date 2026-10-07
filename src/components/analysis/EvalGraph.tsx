@@ -66,7 +66,7 @@ export const EvalGraph: React.FC<EvalGraphProps> = ({
       <div className="flex items-center justify-between text-[11px] text-gray-400 mb-1.5 px-1 h-5">
         <span className="flex items-center gap-1.5 font-medium">
           <span className="w-2 h-2 rounded-full bg-chess-accent inline-block" />
-          <span>Değerlendirme Akışı (CAPS)</span>
+          <span>Değerlendirme Akışı</span>
         </span>
 
         {/* Dynamic Tooltip / Current Step info */}

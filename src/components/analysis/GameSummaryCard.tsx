@@ -76,7 +76,7 @@ export const GameSummaryCard: React.FC<GameSummaryCardProps> = ({
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2 text-sm font-bold text-gray-200">
             <Award className="w-4 h-4 text-chess-accent" />
-            <span>CAPS2 Doğruluk Skoru</span>
+            <span>Oyun Doğruluk Oranı</span>
           </div>
           <span className="text-[11px] text-gray-400">0 - 100%</span>
         </div>

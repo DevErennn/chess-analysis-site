@@ -1,4 +1,4 @@
-export type EngineProfileId = 'stockfish-16' | 'torch-tactical' | 'master-deep' | 'fast-scan';
+export type EngineProfileId = 'stockfish-16' | 'tactical-depth' | 'master-deep' | 'fast-scan';
 
 export interface EngineProfile {
   id: EngineProfileId;
@@ -7,49 +7,46 @@ export interface EngineProfile {
   tagline: string;
   description: string;
   defaultDepth: number;
-  tacticalBoost: boolean;
   badgeColor: string;
+  isFast?: boolean;
 }
 
 export const ENGINE_PROFILES: Record<EngineProfileId, EngineProfile> = {
   'stockfish-16': {
     id: 'stockfish-16',
-    name: 'Stockfish 16 NNUE',
+    name: 'Stockfish 16 NNUE (Standart)',
     shortName: 'Stockfish 16',
-    tagline: 'Hibrit Cloud + WASM Sinir Ağı',
-    description: 'Dünya şampiyonu Stockfish 16 motoru. Lichess bulut veri tabanı ile 40+ derinlik, yerel WASM ile derin pozisyonel değerlendirme.',
-    defaultDepth: 13,
-    tacticalBoost: false,
+    tagline: 'Dengeli & Güvenilir Analiz (Derinlik 14)',
+    description: 'Dünya şampiyonu Stockfish 16 sinir ağı (NNUE) motoru. Konumsal ve taktiksel dengeli derinlikte tutarlı oyun incelemesi.',
+    defaultDepth: 14,
     badgeColor: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30',
   },
-  'torch-tactical': {
-    id: 'torch-tactical',
-    name: 'Torch Taktiksel Motor',
-    shortName: 'Torch Tactical',
-    tagline: 'Agresif Feda & Taktik Avcısı',
-    description: 'Taktiksel gerilim ve şah hücumlarını özel quiescence derinliği ile analiz eden, fedaları ve gizli taktikleri önceleyen agresif motor profili.',
-    defaultDepth: 15,
-    tacticalBoost: true,
+  'tactical-depth': {
+    id: 'tactical-depth',
+    name: 'Taktiksel Derinlik Modu',
+    shortName: 'Taktiksel Mod',
+    tagline: 'Taktiksel Arama & Fedalar (Derinlik 16)',
+    description: 'Şah hücumları, taş fedaları ve kritik varyantları yakalamak için 16 ply derinliğe ulaşan yüksek taktiksel hassasiyet.',
+    defaultDepth: 16,
     badgeColor: 'text-amber-400 bg-amber-500/10 border-amber-500/30',
   },
   'master-deep': {
     id: 'master-deep',
-    name: 'GM Usta Seviyesi Derinlik',
+    name: 'GM Usta Seviyesi Analiz',
     shortName: 'GM Master',
-    tagline: 'Turnuva Kalitesinde 16-18 Derinlik',
-    description: 'Büyük usta seviyesinde maksimum hassasiyet. Her pozisyon için derin taktiksel arama ve sıfır hata payı.',
-    defaultDepth: 17,
-    tacticalBoost: true,
+    tagline: 'Turnuva Kalitesinde 18 Derinlik',
+    description: 'Büyük usta seviyesinde maksimum hassasiyet. Her pozisyon için derin yerel Stockfish araması ve en düşük hata payı.',
+    defaultDepth: 18,
     badgeColor: 'text-purple-400 bg-purple-500/10 border-purple-500/30',
   },
   'fast-scan': {
     id: 'fast-scan',
-    name: 'Hızlı İnceleme',
+    name: 'Hızlı İnceleme (Düşük Derinlik)',
     shortName: 'Hızlı Tarama',
-    tagline: 'Saniyeler İçinde Hızlı Önizleme',
-    description: 'Oyunun genel gidişatını, büyük gafları ve kırılma anını saniyeler içinde tespit eden yüksek hızlı tarama modu.',
+    tagline: 'Saniyeler İçinde Hızlı Önizleme (Derinlik 10)',
+    description: 'Oyunun genel seyrini ve büyük gafları saniyeler içinde tespit eden hızlı tarama modu (Düşük derinlik nedeniyle gürültü içerebilir).',
     defaultDepth: 10,
-    tacticalBoost: false,
     badgeColor: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30',
+    isFast: true,
   },
 };

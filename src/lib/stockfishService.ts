@@ -1,11 +1,9 @@
 import { Chess } from 'chess.js';
 import type { EngineEvaluation, MultiPvCandidate } from '../types/chess';
-import { fetchLichessCloudEval } from './cloudEvalService';
 
 export interface AnalysisOptions {
   depth?: number;
   profileId?: import('../types/chess').EngineProfileId;
-  tacticalBoost?: boolean;
   onProgress?: (progress: {
     current: number;
     total: number;
@@ -16,118 +14,162 @@ export interface AnalysisOptions {
   signal?: AbortSignal;
 }
 
-export class StockfishService {
-  private worker: Worker | null = null;
-  private isReady = false;
-  private readyPromise: Promise<void> | null = null;
-  private readyResolver: (() => void) | null = null;
+/**
+ * Normalizes FEN to its core position state:
+ * [pieces, turn, castling, en-passant]
+ * Discards halfmove clock and fullmove number so transpositions match.
+ */
+export function normalizeFen(fen: string): string {
+  const parts = fen.trim().split(/\s+/);
+  return parts.slice(0, 4).join(' ');
+}
 
-  constructor() {
-    this.initWorker();
+/**
+ * Normalizes raw engine UCI cp and mate output to universal White perspective:
+ * Positive = White advantage, Negative = Black advantage.
+ */
+export function normalizeScoreToWhite(
+  fen: string,
+  rawCp?: number,
+  rawMate?: number | null
+): { cp: number; mate: number | null } {
+  const turn = fen.split(' ')[1] || 'w';
+  const isWhite = turn === 'w';
+
+  const mateWhite = rawMate !== null && rawMate !== undefined
+    ? (isWhite ? rawMate : -rawMate)
+    : null;
+
+  let cpWhite = rawCp !== undefined
+    ? (isWhite ? rawCp : -rawCp)
+    : 0;
+
+  // Convert mate distance into high centipawn equivalent:
+  // e.g. Mate in 1 for White = +9990, Mate in 2 = +9980
+  // Mate in 1 for Black = -9990, Mate in 2 = -9980
+  if (mateWhite !== null) {
+    const absDist = Math.min(Math.abs(mateWhite), 100);
+    const mateCpValue = 10000 - absDist * 10;
+    cpWhite = mateWhite > 0 ? mateCpValue : -mateCpValue;
   }
 
-  private initWorker() {
+  return { cp: cpWhite, mate: mateWhite };
+}
+
+interface WorkerClient {
+  worker: Worker | null;
+  isReady: boolean;
+  readyPromise: Promise<void> | null;
+  activeRequestId: number;
+  isSearching: boolean;
+}
+
+export class StockfishService {
+  // Two dedicated workers: one for full game review, one for interactive on-board actions
+  private analysisClient: WorkerClient;
+  private interactiveClient: WorkerClient;
+
+  // In-memory cache for evaluated FENs in the current session
+  private positionCache = new Map<string, EngineEvaluation>();
+
+  constructor() {
+    this.analysisClient = this.createWorkerClient('analysis');
+    this.interactiveClient = this.createWorkerClient('interactive');
+  }
+
+  private createWorkerClient(label: string): WorkerClient {
+    const client: WorkerClient = {
+      worker: null,
+      isReady: false,
+      readyPromise: null,
+      activeRequestId: 0,
+      isSearching: false,
+    };
+
     try {
       const wasmSupported =
         typeof WebAssembly === 'object' &&
         typeof WebAssembly.validate === 'function';
-      // Use WebAssembly worker when supported for 10x performance and accuracy
       const workerUrl = wasmSupported
         ? '/stockfish/stockfish.wasm.js'
         : '/stockfish/stockfish.js';
-      this.worker = new Worker(workerUrl);
+
+      client.worker = new Worker(workerUrl);
     } catch {
       try {
-        this.worker = new Worker('/stockfish/stockfish.js');
-      } catch {
-        try {
-          const blob = new Blob(
-            [
-              `importScripts('https://cdnjs.cloudflare.com/ajax/libs/stockfish.js/10.0.2/stockfish.js');`,
-            ],
-            { type: 'application/javascript' }
-          );
-          this.worker = new Worker(URL.createObjectURL(blob));
-        } catch (err2) {
-          console.error('Failed to initialize Stockfish worker:', err2);
-        }
+        client.worker = new Worker('/stockfish/stockfish.js');
+      } catch (err) {
+        console.error(`Failed to initialize Stockfish worker (${label}):`, err);
       }
     }
 
-    if (this.worker) {
-      this.readyPromise = new Promise((resolve) => {
-        this.readyResolver = resolve;
+    if (client.worker) {
+      let resolveReady: (() => void) | null = null;
+      client.readyPromise = new Promise((res) => {
+        resolveReady = res;
       });
 
-      this.worker.onerror = (err) => {
-        console.error('Stockfish worker error:', err);
+      client.worker.onerror = (err) => {
+        console.error(`Stockfish worker error (${label}):`, err);
       };
 
-      this.worker.onmessage = (e: MessageEvent) => {
+      const initHandler = (e: MessageEvent) => {
         const raw = typeof e.data === 'string' ? e.data : '';
-        const lines = raw.split(/\r?\n/);
-        for (const singleLine of lines) {
-          const line = singleLine.trim();
-          if (!line) continue;
-
-          if (line === 'uciok' || line === 'readyok') {
-            this.isReady = true;
-            if (this.readyResolver) {
-              this.readyResolver();
-              this.readyResolver = null;
-            }
+        if (raw.includes('uciok') || raw.includes('readyok')) {
+          client.isReady = true;
+          if (resolveReady) {
+            resolveReady();
+            resolveReady = null;
           }
+          client.worker?.removeEventListener('message', initHandler);
         }
       };
 
-      this.worker.postMessage('uci');
-      this.worker.postMessage('isready');
+      client.worker.addEventListener('message', initHandler);
+      client.worker.postMessage('uci');
+      client.worker.postMessage('isready');
+    }
+
+    return client;
+  }
+
+  private async waitClientReady(client: WorkerClient): Promise<void> {
+    if (client.isReady) return;
+    if (client.readyPromise) {
+      await Promise.race([
+        client.readyPromise,
+        new Promise((r) => setTimeout(r, 4000)),
+      ]);
+      client.isReady = true;
     }
   }
 
   public async waitReady(): Promise<void> {
-    if (this.isReady) return;
-    if (this.readyPromise) {
-      await Promise.race([
-        this.readyPromise,
-        new Promise((resolve) => setTimeout(resolve, 3000)),
-      ]);
-      this.isReady = true;
-    }
-  }
-
-  public stop(): void {
-    if (this.worker) {
-      this.worker.postMessage('stop');
-    }
-  }
-
-  public terminate(): void {
-    if (this.worker) {
-      this.worker.terminate();
-      this.worker = null;
-      this.isReady = false;
-    }
+    await Promise.all([
+      this.waitClientReady(this.analysisClient),
+      this.waitClientReady(this.interactiveClient),
+    ]);
   }
 
   /**
-   * Analyzes a single FEN position using Lichess Cloud Eval or Stockfish UCI commands.
-   * Returns evaluation from White's perspective (+ = White advantage).
+   * Clears the evaluation cache.
    */
-  public async evaluatePosition(
-    fen: string,
-    depth = 12,
-    useCloud = true,
-    tacticalBoost = false
-  ): Promise<EngineEvaluation> {
-    // 1. Pre-check for terminal game positions (checkmate or draw)
+  public clearCache(): void {
+    this.positionCache.clear();
+  }
+
+  /**
+   * Pre-checks terminal game states (checkmate, draw).
+   */
+  private checkTerminalState(fen: string): EngineEvaluation | null {
     try {
       const testChess = new Chess(fen);
       if (testChess.isCheckmate()) {
         const turn = fen.split(' ')[1] || 'w';
-        const mateScore = turn === 'w' ? -1 : 1; // if it's White's turn, White is checkmated
+        const mateScore = turn === 'w' ? -1 : 1; // if White to move, White is checkmated
+        const cp = mateScore > 0 ? 9990 : -9990;
         return {
-          cp: mateScore > 0 ? 10000 : -10000,
+          cp,
           mate: mateScore,
           depth: 99,
           bestMoveUci: '',
@@ -144,79 +186,70 @@ export class StockfishService {
         };
       }
     } catch {
-      // Proceed with engine
-    }
-
-    // 2. Check Lichess Cloud Evaluation first (depth 40-75+, instant)
-    if (useCloud) {
-      try {
-        const cloudEval = await fetchLichessCloudEval(fen, 1200);
-        if (cloudEval) {
-          return cloudEval;
-        }
-      } catch {
-        // Fallback to local Stockfish
-      }
-    }
-
-    // 3. Dynamic Tactical Quiescence depth adjustment:
-    let effectiveDepth = depth;
-    try {
-      const testChess = new Chess(fen);
-      if (testChess.inCheck()) {
-        effectiveDepth = depth + (tacticalBoost ? 4 : 2); // deeper tactical verification in checks
-      } else {
-        const legal = testChess.moves({ verbose: true });
-        const captureCount = legal.filter((m) => m.captured).length;
-        if (captureCount >= 2) {
-          effectiveDepth = depth + (tacticalBoost ? 3 : 1); // tactical tension
-        } else if (tacticalBoost) {
-          effectiveDepth = depth + 1;
-        }
-      }
-    } catch {
       // ignore
     }
+    return null;
+  }
 
+  /**
+   * Executes a robust search on a specific worker client with a unique requestId.
+   */
+  private runSearch(
+    client: WorkerClient,
+    fen: string,
+    depth: number,
+    multiPv = 1
+  ): Promise<EngineEvaluation> {
     return new Promise((resolve) => {
-      if (!this.worker) {
+      if (!client.worker) {
         resolve({
           cp: 0,
-          depth: effectiveDepth,
+          mate: null,
+          depth,
           bestMoveUci: '',
           bestMoveSan: '',
         });
         return;
       }
 
-      const turn = fen.split(' ')[1] || 'w';
-      let lastCp: number | undefined = undefined;
-      let lastMate: number | null | undefined = undefined;
+      const requestId = ++client.activeRequestId;
+      client.isSearching = true;
+
+      let lastRawCp: number | undefined = undefined;
+      let lastRawMate: number | null | undefined = undefined;
       let lastPv: string | undefined = undefined;
       let bestMoveUci = '';
-      let isResolved = false;
+      let isDone = false;
 
-      const finish = (result: EngineEvaluation) => {
-        if (isResolved) return;
-        isResolved = true;
+      const cleanupAndResolve = (result: EngineEvaluation) => {
+        if (isDone) return;
+        isDone = true;
+        client.isSearching = false;
         if (timeoutId) clearTimeout(timeoutId);
-        this.worker?.removeEventListener('message', messageHandler);
+        client.worker?.removeEventListener('message', onMessage);
         resolve(result);
       };
 
-      // Safety timeout: 4.5s max per move
+      // Safety timeout: 5s max per position
       const timeoutId = setTimeout(() => {
-        finish({
-          cp: lastCp ?? 0,
-          mate: lastMate ?? null,
-          bestMoveUci: bestMoveUci || '',
-          bestMoveSan: '',
-          depth: effectiveDepth,
-          pv: lastPv,
-        });
-      }, 4500);
+        if (requestId === client.activeRequestId) {
+          client.worker?.postMessage('stop');
+          const normalized = normalizeScoreToWhite(fen, lastRawCp, lastRawMate);
+          cleanupAndResolve({
+            cp: normalized.cp,
+            mate: normalized.mate,
+            bestMoveUci: bestMoveUci || '',
+            bestMoveSan: '',
+            depth,
+            pv: lastPv,
+          });
+        }
+      }, 5000);
 
-      const messageHandler = (e: MessageEvent) => {
+      const onMessage = (e: MessageEvent) => {
+        // Discard any output from outdated requests
+        if (client.activeRequestId !== requestId) return;
+
         const raw = typeof e.data === 'string' ? e.data : '';
         const lines = raw.split(/\r?\n/);
 
@@ -224,31 +257,30 @@ export class StockfishService {
           const line = singleLine.trim();
           if (!line) continue;
 
-          // Parse info score
+          // Parse info score - ONLY accept exact evaluations; discard lowerbound/upperbound search bounds
           if (line.startsWith('info') && line.includes('score')) {
-            const cpMatch = line.match(/score cp (-?\d+)/);
-            const mateMatch = line.match(/score mate (-?\d+)/);
-            const pvMatch = line.match(/ pv (.*)$/);
+            const isBound = line.includes('lowerbound') || line.includes('upperbound');
+            if (!isBound) {
+              const cpMatch = line.match(/score cp (-?\d+)/);
+              const mateMatch = line.match(/score mate (-?\d+)/);
+              const pvMatch = line.match(/ pv (.*)$/);
 
-            if (cpMatch) {
-              const rawCp = parseInt(cpMatch[1], 10);
-              // Stockfish reports score from the moving side's perspective
-              lastCp = turn === 'w' ? rawCp : -rawCp;
-              lastMate = null;
-            } else if (mateMatch) {
-              const rawMate = parseInt(mateMatch[1], 10);
-              lastMate = turn === 'w' ? rawMate : -rawMate;
-              lastCp = lastMate > 0 ? 10000 : -10000;
-            }
+              if (cpMatch) {
+                lastRawCp = parseInt(cpMatch[1], 10);
+                lastRawMate = null;
+              } else if (mateMatch) {
+                lastRawMate = parseInt(mateMatch[1], 10);
+              }
 
-            if (pvMatch) {
-              lastPv = pvMatch[1];
+              if (pvMatch) {
+                lastPv = pvMatch[1];
+              }
             }
           }
 
           // Parse bestmove
           if (line.startsWith('bestmove')) {
-            const parts = line.split(' ');
+            const parts = line.split(/\s+/);
             bestMoveUci = parts[1] || '';
 
             // Convert UCI to SAN
@@ -265,15 +297,16 @@ export class StockfishService {
                 }
               }
             } catch {
-              // fallback
+              // fallback to UCI
             }
 
-            finish({
-              cp: lastCp ?? 0,
-              mate: lastMate ?? null,
+            const normalized = normalizeScoreToWhite(fen, lastRawCp, lastRawMate);
+            cleanupAndResolve({
+              cp: normalized.cp,
+              mate: normalized.mate,
               bestMoveUci,
               bestMoveSan,
-              depth: effectiveDepth,
+              depth,
               pv: lastPv,
             });
             return;
@@ -281,44 +314,75 @@ export class StockfishService {
         }
       };
 
-      this.worker.addEventListener('message', messageHandler);
-      this.worker.postMessage('setoption name MultiPV value 1');
-      this.worker.postMessage(`position fen ${fen}`);
-      this.worker.postMessage(`go depth ${effectiveDepth}`);
+      client.worker.addEventListener('message', onMessage);
+      client.worker.postMessage(`setoption name MultiPV value ${multiPv}`);
+      client.worker.postMessage(`position fen ${fen}`);
+      client.worker.postMessage(`go depth ${depth}`);
     });
   }
 
   /**
-   * Evaluates top N candidate engine lines (MultiPV) for the given FEN.
-   * Returns up to `count` candidate moves with evaluation and continuation.
+   * Evaluates a single FEN position using the interactive worker (on-board / sandbox).
+   * Fully isolated from full game analysis.
+   */
+  public async evaluatePosition(
+    fen: string,
+    depth = 12,
+    _interactive?: boolean
+  ): Promise<EngineEvaluation> {
+    const terminal = this.checkTerminalState(fen);
+    if (terminal) return terminal;
+
+    const cacheKey = `${normalizeFen(fen)}_${depth}`;
+    if (this.positionCache.has(cacheKey)) {
+      return this.positionCache.get(cacheKey)!;
+    }
+
+    await this.waitClientReady(this.interactiveClient);
+
+    // If interactive client is searching, stop it before issuing a new one
+    if (this.interactiveClient.isSearching) {
+      this.interactiveClient.worker?.postMessage('stop');
+      await new Promise((r) => setTimeout(r, 20));
+    }
+
+    const evaluation = await this.runSearch(this.interactiveClient, fen, depth, 1);
+    this.positionCache.set(cacheKey, evaluation);
+    return evaluation;
+  }
+
+  /**
+   * Evaluates top 3 candidate engine lines (MultiPV) for the given FEN on interactiveClient.
    */
   public async evaluatePositionMultiPv(
     fen: string,
     depth = 11,
     count = 3
   ): Promise<MultiPvCandidate[]> {
-    await this.waitReady();
+    const terminal = this.checkTerminalState(fen);
+    if (terminal) return [];
 
-    if (!this.worker) {
-      return [];
-    }
+    await this.waitClientReady(this.interactiveClient);
 
-    // Terminal position check
-    try {
-      const test = new Chess(fen);
-      if (test.isGameOver()) {
-        return [];
-      }
-    } catch {
-      // proceed
+    if (this.interactiveClient.isSearching) {
+      this.interactiveClient.worker?.postMessage('stop');
+      await new Promise((r) => setTimeout(r, 20));
     }
 
     return new Promise((resolve) => {
-      const turn = fen.split(' ')[1] || 'w';
+      const client = this.interactiveClient;
+      if (!client.worker) {
+        resolve([]);
+        return;
+      }
+
+      const requestId = ++client.activeRequestId;
+      client.isSearching = true;
+
       const linesMap = new Map<number, {
         multipv: number;
-        cp?: number;
-        mate?: number | null;
+        rawCp?: number;
+        rawMate?: number | null;
         depth: number;
         pv: string;
       }>();
@@ -327,15 +391,15 @@ export class StockfishService {
       const finish = () => {
         if (isResolved) return;
         isResolved = true;
+        client.isSearching = false;
         if (timeoutId) clearTimeout(timeoutId);
-        this.worker?.removeEventListener('message', messageHandler);
-        this.worker?.postMessage('setoption name MultiPV value 1');
+        client.worker?.removeEventListener('message', onMessage);
+        client.worker?.postMessage('setoption name MultiPV value 1');
 
         const rawCandidates = Array.from(linesMap.values()).sort(
           (a, b) => a.multipv - b.multipv
         );
 
-        // Convert UCI moves to SAN
         const candidates: MultiPvCandidate[] = rawCandidates.map((c) => {
           const uciMoves = c.pv ? c.pv.trim().split(/\s+/) : [];
           const bestMoveUci = uciMoves[0] || '';
@@ -361,10 +425,12 @@ export class StockfishService {
             // fallback
           }
 
+          const normalized = normalizeScoreToWhite(fen, c.rawCp, c.rawMate);
+
           return {
             multipv: c.multipv,
-            cp: c.cp,
-            mate: c.mate,
+            cp: normalized.cp,
+            mate: normalized.mate,
             depth: c.depth,
             pv: c.pv,
             bestMoveUci,
@@ -378,7 +444,9 @@ export class StockfishService {
 
       const timeoutId = setTimeout(finish, 3800);
 
-      const messageHandler = (e: MessageEvent) => {
+      const onMessage = (e: MessageEvent) => {
+        if (client.activeRequestId !== requestId) return;
+
         const raw = typeof e.data === 'string' ? e.data : '';
         const lines = raw.split(/\r?\n/);
 
@@ -387,37 +455,37 @@ export class StockfishService {
           if (!line) continue;
 
           if (line.startsWith('info') && line.includes('multipv') && line.includes('score')) {
-            const mpvMatch = line.match(/multipv (\d+)/);
-            const depthMatch = line.match(/depth (\d+)/);
-            const cpMatch = line.match(/score cp (-?\d+)/);
-            const mateMatch = line.match(/score mate (-?\d+)/);
-            const pvMatch = line.match(/ pv (.*)$/);
+            const isBound = line.includes('lowerbound') || line.includes('upperbound');
+            if (!isBound) {
+              const mpvMatch = line.match(/multipv (\d+)/);
+              const depthMatch = line.match(/depth (\d+)/);
+              const cpMatch = line.match(/score cp (-?\d+)/);
+              const mateMatch = line.match(/score mate (-?\d+)/);
+              const pvMatch = line.match(/ pv (.*)$/);
 
-            if (mpvMatch) {
-              const mpvNum = parseInt(mpvMatch[1], 10);
-              const curDepth = depthMatch ? parseInt(depthMatch[1], 10) : depth;
-              let cp: number | undefined = undefined;
-              let mate: number | null | undefined = undefined;
+              if (mpvMatch) {
+                const mpvNum = parseInt(mpvMatch[1], 10);
+                const curDepth = depthMatch ? parseInt(depthMatch[1], 10) : depth;
+                let rawCp: number | undefined = undefined;
+                let rawMate: number | null | undefined = undefined;
 
-              if (cpMatch) {
-                const rawCp = parseInt(cpMatch[1], 10);
-                cp = turn === 'w' ? rawCp : -rawCp;
-                mate = null;
-              } else if (mateMatch) {
-                const rawMate = parseInt(mateMatch[1], 10);
-                mate = turn === 'w' ? rawMate : -rawMate;
-                cp = mate > 0 ? 10000 : -10000;
+                if (cpMatch) {
+                  rawCp = parseInt(cpMatch[1], 10);
+                  rawMate = null;
+                } else if (mateMatch) {
+                  rawMate = parseInt(mateMatch[1], 10);
+                }
+
+                const pv = pvMatch ? pvMatch[1] : '';
+
+                linesMap.set(mpvNum, {
+                  multipv: mpvNum,
+                  rawCp,
+                  rawMate,
+                  depth: curDepth,
+                  pv,
+                });
               }
-
-              const pv = pvMatch ? pvMatch[1] : '';
-
-              linesMap.set(mpvNum, {
-                multipv: mpvNum,
-                cp,
-                mate,
-                depth: curDepth,
-                pv,
-              });
             }
           }
 
@@ -428,28 +496,32 @@ export class StockfishService {
         }
       };
 
-      this.worker?.addEventListener('message', messageHandler);
-      this.worker?.postMessage(`setoption name MultiPV value ${count}`);
-      this.worker?.postMessage(`position fen ${fen}`);
-      this.worker?.postMessage(`go depth ${depth}`);
+      client.worker.addEventListener('message', onMessage);
+      client.worker.postMessage(`setoption name MultiPV value ${count}`);
+      client.worker.postMessage(`position fen ${fen}`);
+      client.worker.postMessage(`go depth ${depth}`);
     });
   }
 
   /**
-   * Analyzes an array of FENs sequentially.
+   * Analyzes all positions in a game with single-source, uniform-depth consistency.
+   * Runs exclusively on analysisClient.
+   * Guarantees FEN i's evalAfter === FEN i+1's evalBefore.
    */
   public async analyzePositions(
     fens: string[],
     options: AnalysisOptions = {}
   ): Promise<EngineEvaluation[]> {
-    await this.waitReady();
+    await this.waitClientReady(this.analysisClient);
+
+    const client = this.analysisClient;
     const results: EngineEvaluation[] = [];
     const total = fens.length;
-    const depth = options.depth || 12;
+    const targetDepth = options.depth || 14;
 
-    if (this.worker) {
-      this.worker.postMessage('ucinewgame');
-      this.worker.postMessage('isready');
+    if (client.worker) {
+      client.worker.postMessage('ucinewgame');
+      client.worker.postMessage('isready');
       await new Promise((r) => setTimeout(r, 40));
     }
 
@@ -460,7 +532,23 @@ export class StockfishService {
       }
 
       const fen = fens[i];
-      const evaluation = await this.evaluatePosition(fen, depth, true, options.tacticalBoost ?? false);
+      const normKey = `${normalizeFen(fen)}_${targetDepth}`;
+
+      let evaluation: EngineEvaluation;
+
+      // 1. Check terminal position first
+      const terminal = this.checkTerminalState(fen);
+      if (terminal) {
+        evaluation = terminal;
+      } else if (this.positionCache.has(normKey)) {
+        // 2. Reuse consistent cached evaluation if this exact position occurred before (transposition/repetition)
+        evaluation = this.positionCache.get(normKey)!;
+      } else {
+        // 3. Search on analysisClient at consistent uniform depth
+        evaluation = await this.runSearch(client, fen, targetDepth, 1);
+        this.positionCache.set(normKey, evaluation);
+      }
+
       results.push(evaluation);
 
       if (options.onProgress) {
@@ -475,6 +563,29 @@ export class StockfishService {
     }
 
     return results;
+  }
+
+  public stop(): void {
+    if (this.analysisClient.worker && this.analysisClient.isSearching) {
+      this.analysisClient.worker.postMessage('stop');
+      this.analysisClient.isSearching = false;
+    }
+    if (this.interactiveClient.worker && this.interactiveClient.isSearching) {
+      this.interactiveClient.worker.postMessage('stop');
+      this.interactiveClient.isSearching = false;
+    }
+  }
+
+  public terminate(): void {
+    if (this.analysisClient.worker) {
+      this.analysisClient.worker.terminate();
+      this.analysisClient.worker = null;
+    }
+    if (this.interactiveClient.worker) {
+      this.interactiveClient.worker.terminate();
+      this.interactiveClient.worker = null;
+    }
+    this.positionCache.clear();
   }
 }
 
