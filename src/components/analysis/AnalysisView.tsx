@@ -63,7 +63,7 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
 }) => {
   const [copied, setCopied] = useState(false);
   const [orientation, setOrientation] = useState<'white' | 'black'>('white');
-  const [depth, setDepth] = useState<number>(11);
+  const [depth, setDepth] = useState<number>(18);
   const [profileId, setProfileId] = useState<EngineProfileId>('stockfish-16');
   const [isPlaying, setIsPlaying] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -86,6 +86,7 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const playTimerRef = useRef<number | null>(null);
+  const sandboxRequestIdRef = useRef<number>(0);
 
   // 1. Parse base moves and FEN sequence from PGN
   const { initialMoves, fens } = useMemo(() => {
@@ -257,13 +258,19 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
               evalAfter: evalAfter.cp,
               mateBefore: evalBefore.mate,
               mateAfter: evalAfter.mate,
+              scoreBefore: evalBefore.score,
+              scoreAfter: evalAfter.score,
               bestMoveUci: evalBefore.bestMoveUci,
               bestMoveSan: evalBefore.bestMoveSan,
               winChanceBefore: classificationResult.winChanceBefore,
               winChanceAfter: classificationResult.winChanceAfter,
               winChanceLoss: classificationResult.winChanceLoss,
+              cpl: classificationResult.cpl,
+              accuracy: classificationResult.accuracy,
+              isBook: classificationResult.isBook,
               classification: classificationResult.classification,
               comment: classificationResult.comment,
+              multiPvLines: evalBefore.lines,
             };
           }
         }
@@ -297,13 +304,17 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
     setSandboxEval(null);
     setIsSandboxThinking(true);
 
+    const reqId = ++sandboxRequestIdRef.current;
     getStockfishService().evaluatePosition(currentFen, 12, true).then((res) => {
-      setSandboxEval(res);
-      setIsSandboxThinking(false);
+      if (sandboxRequestIdRef.current === reqId) {
+        setSandboxEval(res);
+        setIsSandboxThinking(false);
+      }
     });
   };
 
   const handleExitSandbox = () => {
+    sandboxRequestIdRef.current++;
     setIsSandboxMode(false);
     setSandboxFen('');
     setSandboxMoves([]);
@@ -315,9 +326,13 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
     setSandboxFen(currentFen);
     setSandboxMoves([]);
     setIsSandboxThinking(true);
+
+    const reqId = ++sandboxRequestIdRef.current;
     getStockfishService().evaluatePosition(currentFen, 12, true).then((res) => {
-      setSandboxEval(res);
-      setIsSandboxThinking(false);
+      if (sandboxRequestIdRef.current === reqId) {
+        setSandboxEval(res);
+        setIsSandboxThinking(false);
+      }
     });
   };
 
@@ -337,9 +352,12 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
       playMoveSound();
 
       setIsSandboxThinking(true);
+      const reqId = ++sandboxRequestIdRef.current;
       getStockfishService().evaluatePosition(nextFen, 12, true).then((res) => {
-        setSandboxEval(res);
-        setIsSandboxThinking(false);
+        if (sandboxRequestIdRef.current === reqId) {
+          setSandboxEval(res);
+          setIsSandboxThinking(false);
+        }
       });
 
       return true;

@@ -11,6 +11,10 @@ export type MoveClassification =
   | 'blunder'     // ??
   | 'book';       // 📖
 
+export type EngineScore =
+  | { type: 'cp'; cp: number }
+  | { type: 'mate'; mateIn: number };
+
 export interface MoveAnalysis {
   moveNumber: number;
   moveIndex: number;
@@ -24,22 +28,39 @@ export interface MoveAnalysis {
   evalAfter?: number;  // centipawns from White's perspective
   mateBefore?: number | null; // mate in N from White's perspective
   mateAfter?: number | null;
+  scoreBefore?: EngineScore;
+  scoreAfter?: EngineScore;
   bestMoveUci?: string;
   bestMoveSan?: string;
   winChanceBefore?: number;
   winChanceAfter?: number;
   winChanceLoss?: number;
+  cpl?: number; // Raw centipawn loss from player's POV
+  accuracy?: number; // Accuracy for this individual move (0 - 100)
+  isBook?: boolean;
   classification?: MoveClassification;
   comment?: string;
+  multiPvLines?: MultiPvCandidate[];
+}
+
+export interface EngineLine {
+  multipv: number;
+  depth: number;
+  score: EngineScore;
+  pv: string[];
+  bestMoveUci: string;
+  bestMoveSan?: string;
 }
 
 export interface EngineEvaluation {
   cp?: number;
   mate?: number | null;
+  score?: EngineScore;
   bestMoveUci: string;
   bestMoveSan?: string;
   depth: number;
   pv?: string;
+  lines?: MultiPvCandidate[];
   isCloud?: boolean;
 }
 
@@ -47,6 +68,7 @@ export interface MultiPvCandidate {
   multipv: number;
   cp?: number;
   mate?: number | null;
+  score?: EngineScore;
   bestMoveUci: string;
   bestMoveSan: string;
   depth: number;

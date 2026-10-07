@@ -1,8 +1,9 @@
 import { Chess } from 'chess.js';
-import type { EngineEvaluation, MultiPvCandidate } from '../types/chess';
+import type { EngineEvaluation, MultiPvCandidate, EngineScore } from '../types/chess';
 
 export interface AnalysisOptions {
   depth?: number;
+  multiPv?: number;
   profileId?: import('../types/chess').EngineProfileId;
   onProgress?: (progress: {
     current: number;
@@ -27,12 +28,13 @@ export function normalizeFen(fen: string): string {
 /**
  * Normalizes raw engine UCI cp and mate output to universal White perspective:
  * Positive = White advantage, Negative = Black advantage.
+ * Distinguishes pure centipawns vs discrete mate distance.
  */
 export function normalizeScoreToWhite(
   fen: string,
   rawCp?: number,
   rawMate?: number | null
-): { cp: number; mate: number | null } {
+): { cp: number; mate: number | null; score: EngineScore } {
   const turn = fen.split(' ')[1] || 'w';
   const isWhite = turn === 'w';
 
@@ -44,7 +46,7 @@ export function normalizeScoreToWhite(
     ? (isWhite ? rawCp : -rawCp)
     : 0;
 
-  // Convert mate distance into high centipawn equivalent:
+  // Convert mate distance into continuous centipawn equivalent for sorting/charts:
   // e.g. Mate in 1 for White = +9990, Mate in 2 = +9980
   // Mate in 1 for Black = -9990, Mate in 2 = -9980
   if (mateWhite !== null) {
@@ -53,7 +55,11 @@ export function normalizeScoreToWhite(
     cpWhite = mateWhite > 0 ? mateCpValue : -mateCpValue;
   }
 
-  return { cp: cpWhite, mate: mateWhite };
+  const score: EngineScore = mateWhite !== null
+    ? { type: 'mate', mateIn: mateWhite }
+    : { type: 'cp', cp: cpWhite };
+
+  return { cp: cpWhite, mate: mateWhite, score };
 }
 
 interface WorkerClient {
@@ -62,10 +68,13 @@ interface WorkerClient {
   readyPromise: Promise<void> | null;
   activeRequestId: number;
   isSearching: boolean;
+  currentFen?: string;
+  currentDepth?: number;
+  startedAt?: number;
 }
 
 export class StockfishService {
-  // Two dedicated workers: one for full game review, one for interactive on-board actions
+  // Two dedicated workers: one for full game review, one for interactive on-board actions (Sandbox/MultiPV)
   private analysisClient: WorkerClient;
   private interactiveClient: WorkerClient;
 
@@ -75,6 +84,16 @@ export class StockfishService {
   constructor() {
     this.analysisClient = this.createWorkerClient('analysis');
     this.interactiveClient = this.createWorkerClient('interactive');
+  }
+
+  public getEngineMetadata() {
+    return {
+      name: 'Stockfish 16 NNUE WASM',
+      version: '16.0.0',
+      runtime: 'WebAssembly (Web Worker)',
+      defaultDepth: 16,
+      defaultMultiPv: 3,
+    };
   }
 
   private createWorkerClient(label: string): WorkerClient {
@@ -173,9 +192,6 @@ export class StockfishService {
     ]);
   }
 
-  /**
-   * Clears the evaluation cache.
-   */
   public clearCache(): void {
     this.positionCache.clear();
   }
@@ -193,18 +209,22 @@ export class StockfishService {
         return {
           cp,
           mate: mateScore,
+          score: { type: 'mate', mateIn: mateScore },
           depth: 99,
           bestMoveUci: '',
           bestMoveSan: '',
+          lines: [],
         };
       }
       if (testChess.isDraw()) {
         return {
           cp: 0,
           mate: null,
+          score: { type: 'cp', cp: 0 },
           depth: 99,
           bestMoveUci: '',
           bestMoveSan: '',
+          lines: [],
         };
       }
     } catch {
@@ -214,28 +234,41 @@ export class StockfishService {
   }
 
   /**
-   * Executes a robust search on a specific worker client with a unique requestId.
+   * Executes a search on a specific worker client with MultiPV and dynamic timeout.
    */
   private runSearch(
     client: WorkerClient,
     fen: string,
     depth: number,
-    multiPv = 1
+    multiPv = 3
   ): Promise<EngineEvaluation> {
     return new Promise((resolve) => {
       if (!client.worker) {
         resolve({
           cp: 0,
           mate: null,
+          score: { type: 'cp', cp: 0 },
           depth,
           bestMoveUci: '',
           bestMoveSan: '',
+          lines: [],
         });
         return;
       }
 
       const requestId = ++client.activeRequestId;
       client.isSearching = true;
+      client.currentFen = fen;
+      client.currentDepth = depth;
+      client.startedAt = Date.now();
+
+      const candidateLines = new Map<number, {
+        multipv: number;
+        rawCp?: number;
+        rawMate?: number | null;
+        depth: number;
+        pv: string;
+      }>();
 
       let lastRawCp: number | undefined = undefined;
       let lastRawMate: number | null | undefined = undefined;
@@ -252,24 +285,27 @@ export class StockfishService {
         resolve(result);
       };
 
-      // Safety timeout: 5s max per position
+      // Adaptive timeout: ensures deep searches don't freeze indefinitely, but gives ample time (min 8s, up to depth * 1.5s)
+      const timeoutMs = Math.max(8000, depth * 1500);
       const timeoutId = setTimeout(() => {
         if (requestId === client.activeRequestId) {
           client.worker?.postMessage('stop');
           const normalized = normalizeScoreToWhite(fen, lastRawCp, lastRawMate);
+          const lines = this.buildMultiPvLines(fen, candidateLines, depth);
           cleanupAndResolve({
             cp: normalized.cp,
             mate: normalized.mate,
-            bestMoveUci: bestMoveUci || '',
-            bestMoveSan: '',
+            score: normalized.score,
+            bestMoveUci: bestMoveUci || (lines[0]?.bestMoveUci ?? ''),
+            bestMoveSan: lines[0]?.bestMoveSan ?? '',
             depth,
             pv: lastPv,
+            lines,
           });
         }
-      }, 5000);
+      }, timeoutMs);
 
       const onMessage = (e: MessageEvent) => {
-        // Discard any output from outdated requests
         if (client.activeRequestId !== requestId) return;
 
         const raw = typeof e.data === 'string' ? e.data : '';
@@ -279,23 +315,51 @@ export class StockfishService {
           const line = singleLine.trim();
           if (!line) continue;
 
-          // Parse info score - ONLY accept exact evaluations; discard lowerbound/upperbound search bounds
+          // Parse info line
           if (line.startsWith('info') && line.includes('score')) {
             const isBound = line.includes('lowerbound') || line.includes('upperbound');
-            if (!isBound) {
-              const cpMatch = line.match(/score cp (-?\d+)/);
-              const mateMatch = line.match(/score mate (-?\d+)/);
-              const pvMatch = line.match(/ pv (.*)$/);
+            const cpMatch = line.match(/score cp (-?\d+)/);
+            const mateMatch = line.match(/score mate (-?\d+)/);
+            const mpvMatch = line.match(/multipv (\d+)/);
+            const depthMatch = line.match(/depth (\d+)/);
+            const pvMatch = line.match(/ pv (.*)$/);
 
-              if (cpMatch) {
-                lastRawCp = parseInt(cpMatch[1], 10);
+            const mpvIndex = mpvMatch ? parseInt(mpvMatch[1], 10) : 1;
+            const parsedDepth = depthMatch ? parseInt(depthMatch[1], 10) : depth;
+
+            let curCp: number | undefined = undefined;
+            let curMate: number | null | undefined = undefined;
+
+            if (cpMatch) {
+              curCp = parseInt(cpMatch[1], 10);
+              curMate = null;
+            } else if (mateMatch) {
+              curMate = parseInt(mateMatch[1], 10);
+            }
+
+            const pv = pvMatch ? pvMatch[1] : '';
+
+            // Store candidate line
+            if (!isBound || !candidateLines.has(mpvIndex)) {
+              candidateLines.set(mpvIndex, {
+                multipv: mpvIndex,
+                rawCp: curCp,
+                rawMate: curMate,
+                depth: parsedDepth,
+                pv,
+              });
+            }
+
+            // Top line updates primary score
+            if (mpvIndex === 1 && (!isBound || lastRawCp === undefined)) {
+              if (curCp !== undefined) {
+                lastRawCp = curCp;
                 lastRawMate = null;
-              } else if (mateMatch) {
-                lastRawMate = parseInt(mateMatch[1], 10);
+              } else if (curMate !== undefined) {
+                lastRawMate = curMate;
               }
-
-              if (pvMatch) {
-                lastPv = pvMatch[1];
+              if (pv) {
+                lastPv = pv;
               }
             }
           }
@@ -307,31 +371,37 @@ export class StockfishService {
             const pvFirstMove = lastPv ? lastPv.trim().split(/\s+/)[0] : '';
             bestMoveUci = (parsedMove && parsedMove !== '(none)') ? parsedMove : pvFirstMove;
 
-            // Convert UCI to SAN
+            const normalized = normalizeScoreToWhite(fen, lastRawCp, lastRawMate);
+            const linesList = this.buildMultiPvLines(fen, candidateLines, depth);
+
+            // SAN for top move
             let bestMoveSan = bestMoveUci;
-            try {
-              if (bestMoveUci && bestMoveUci !== '(none)') {
-                const chess = new Chess(fen);
-                const from = bestMoveUci.slice(0, 2);
-                const to = bestMoveUci.slice(2, 4);
-                const promotion = bestMoveUci.length > 4 ? bestMoveUci.slice(4, 5) : undefined;
-                const moveRes = chess.move({ from, to, promotion });
-                if (moveRes) {
-                  bestMoveSan = moveRes.san;
+            if (linesList[0]?.bestMoveSan) {
+              bestMoveSan = linesList[0].bestMoveSan;
+            } else {
+              try {
+                if (bestMoveUci && bestMoveUci !== '(none)') {
+                  const chess = new Chess(fen);
+                  const from = bestMoveUci.slice(0, 2);
+                  const to = bestMoveUci.slice(2, 4);
+                  const promotion = bestMoveUci.length > 4 ? bestMoveUci.slice(4, 5) : undefined;
+                  const moveRes = chess.move({ from, to, promotion });
+                  if (moveRes) bestMoveSan = moveRes.san;
                 }
+              } catch {
+                // ignore
               }
-            } catch {
-              // fallback to UCI
             }
 
-            const normalized = normalizeScoreToWhite(fen, lastRawCp, lastRawMate);
             cleanupAndResolve({
               cp: normalized.cp,
               mate: normalized.mate,
+              score: normalized.score,
               bestMoveUci,
               bestMoveSan,
               depth,
               pv: lastPv,
+              lines: linesList,
             });
             return;
           }
@@ -345,26 +415,73 @@ export class StockfishService {
     });
   }
 
+  private buildMultiPvLines(
+    fen: string,
+    candidateMap: Map<number, { multipv: number; rawCp?: number; rawMate?: number | null; depth: number; pv: string }>,
+    targetDepth: number
+  ): MultiPvCandidate[] {
+    const rawList = Array.from(candidateMap.values()).sort((a, b) => a.multipv - b.multipv);
+
+    return rawList.map((item) => {
+      const uciMoves = item.pv ? item.pv.trim().split(/\s+/) : [];
+      const bestMoveUci = uciMoves[0] || '';
+      let bestMoveSan = bestMoveUci;
+      const pvSanList: string[] = [];
+
+      try {
+        const chess = new Chess(fen);
+        for (let i = 0; i < Math.min(uciMoves.length, 5); i++) {
+          const u = uciMoves[i];
+          const from = u.slice(0, 2);
+          const to = u.slice(2, 4);
+          const promotion = u.length > 4 ? u.slice(4, 5) : undefined;
+          const res = chess.move({ from, to, promotion });
+          if (res) {
+            if (i === 0) bestMoveSan = res.san;
+            pvSanList.push(res.san);
+          } else {
+            break;
+          }
+        }
+      } catch {
+        // fallback
+      }
+
+      const normalized = normalizeScoreToWhite(fen, item.rawCp, item.rawMate);
+
+      return {
+        multipv: item.multipv,
+        cp: normalized.cp,
+        mate: normalized.mate,
+        score: normalized.score,
+        bestMoveUci,
+        bestMoveSan,
+        depth: item.depth || targetDepth,
+        pv: item.pv,
+        pvSanList,
+      };
+    });
+  }
+
   /**
    * Evaluates a single FEN position using the interactive worker (on-board / sandbox).
-   * Fully isolated from full game analysis.
+   * Fully isolated from full game review.
    */
   public async evaluatePosition(
     fen: string,
-    depth = 12,
+    depth = 14,
     _interactive?: boolean
   ): Promise<EngineEvaluation> {
     const terminal = this.checkTerminalState(fen);
     if (terminal) return terminal;
 
-    const cacheKey = `${normalizeFen(fen)}_${depth}`;
+    const cacheKey = `${normalizeFen(fen)}_${depth}_1`;
     if (this.positionCache.has(cacheKey)) {
       return this.positionCache.get(cacheKey)!;
     }
 
     await this.waitClientReady(this.interactiveClient);
 
-    // If interactive client is searching, stop it before issuing a new one
     if (this.interactiveClient.isSearching) {
       this.interactiveClient.worker?.postMessage('stop');
       await new Promise((r) => setTimeout(r, 20));
@@ -376,11 +493,11 @@ export class StockfishService {
   }
 
   /**
-   * Evaluates top 3 candidate engine lines (MultiPV) for the given FEN on interactiveClient.
+   * Evaluates top candidate engine lines (MultiPV) on interactiveClient.
    */
   public async evaluatePositionMultiPv(
     fen: string,
-    depth = 11,
+    depth = 14,
     count = 3
   ): Promise<MultiPvCandidate[]> {
     const terminal = this.checkTerminalState(fen);
@@ -393,144 +510,14 @@ export class StockfishService {
       await new Promise((r) => setTimeout(r, 20));
     }
 
-    return new Promise((resolve) => {
-      const client = this.interactiveClient;
-      if (!client.worker) {
-        resolve([]);
-        return;
-      }
-
-      const requestId = ++client.activeRequestId;
-      client.isSearching = true;
-
-      const linesMap = new Map<number, {
-        multipv: number;
-        rawCp?: number;
-        rawMate?: number | null;
-        depth: number;
-        pv: string;
-      }>();
-      let isResolved = false;
-
-      const finish = () => {
-        if (isResolved) return;
-        isResolved = true;
-        client.isSearching = false;
-        if (timeoutId) clearTimeout(timeoutId);
-        client.worker?.removeEventListener('message', onMessage);
-        client.worker?.postMessage('setoption name MultiPV value 1');
-
-        const rawCandidates = Array.from(linesMap.values()).sort(
-          (a, b) => a.multipv - b.multipv
-        );
-
-        const candidates: MultiPvCandidate[] = rawCandidates.map((c) => {
-          const uciMoves = c.pv ? c.pv.trim().split(/\s+/) : [];
-          const bestMoveUci = uciMoves[0] || '';
-          let bestMoveSan = bestMoveUci;
-          const pvSanList: string[] = [];
-
-          try {
-            const chess = new Chess(fen);
-            for (let i = 0; i < Math.min(uciMoves.length, 5); i++) {
-              const u = uciMoves[i];
-              const from = u.slice(0, 2);
-              const to = u.slice(2, 4);
-              const promotion = u.length > 4 ? u.slice(4, 5) : undefined;
-              const res = chess.move({ from, to, promotion });
-              if (res) {
-                if (i === 0) bestMoveSan = res.san;
-                pvSanList.push(res.san);
-              } else {
-                break;
-              }
-            }
-          } catch {
-            // fallback
-          }
-
-          const normalized = normalizeScoreToWhite(fen, c.rawCp, c.rawMate);
-
-          return {
-            multipv: c.multipv,
-            cp: normalized.cp,
-            mate: normalized.mate,
-            depth: c.depth,
-            pv: c.pv,
-            bestMoveUci,
-            bestMoveSan,
-            pvSanList,
-          };
-        });
-
-        resolve(candidates);
-      };
-
-      const timeoutId = setTimeout(finish, 3800);
-
-      const onMessage = (e: MessageEvent) => {
-        if (client.activeRequestId !== requestId) return;
-
-        const raw = typeof e.data === 'string' ? e.data : '';
-        const lines = raw.split(/\r?\n/);
-
-        for (const singleLine of lines) {
-          const line = singleLine.trim();
-          if (!line) continue;
-
-          if (line.startsWith('info') && line.includes('multipv') && line.includes('score')) {
-            const isBound = line.includes('lowerbound') || line.includes('upperbound');
-            if (!isBound) {
-              const mpvMatch = line.match(/multipv (\d+)/);
-              const depthMatch = line.match(/depth (\d+)/);
-              const cpMatch = line.match(/score cp (-?\d+)/);
-              const mateMatch = line.match(/score mate (-?\d+)/);
-              const pvMatch = line.match(/ pv (.*)$/);
-
-              if (mpvMatch) {
-                const mpvNum = parseInt(mpvMatch[1], 10);
-                const curDepth = depthMatch ? parseInt(depthMatch[1], 10) : depth;
-                let rawCp: number | undefined = undefined;
-                let rawMate: number | null | undefined = undefined;
-
-                if (cpMatch) {
-                  rawCp = parseInt(cpMatch[1], 10);
-                  rawMate = null;
-                } else if (mateMatch) {
-                  rawMate = parseInt(mateMatch[1], 10);
-                }
-
-                const pv = pvMatch ? pvMatch[1] : '';
-
-                linesMap.set(mpvNum, {
-                  multipv: mpvNum,
-                  rawCp,
-                  rawMate,
-                  depth: curDepth,
-                  pv,
-                });
-              }
-            }
-          }
-
-          if (line.startsWith('bestmove')) {
-            finish();
-            return;
-          }
-        }
-      };
-
-      client.worker.addEventListener('message', onMessage);
-      client.worker.postMessage(`setoption name MultiPV value ${count}`);
-      client.worker.postMessage(`position fen ${fen}`);
-      client.worker.postMessage(`go depth ${depth}`);
-    });
+    const evaluation = await this.runSearch(this.interactiveClient, fen, depth, count);
+    return evaluation.lines || [];
   }
 
   /**
    * Analyzes all positions in a game with single-source, uniform-depth consistency.
    * Runs exclusively on analysisClient.
-   * Guarantees FEN i's evalAfter === FEN i+1's evalBefore.
+   * MultiPV = 3 allows deep differentiation between Best, Great, Brilliant, and only moves.
    */
   public async analyzePositions(
     fens: string[],
@@ -541,7 +528,8 @@ export class StockfishService {
     const client = this.analysisClient;
     const results: EngineEvaluation[] = [];
     const total = fens.length;
-    const targetDepth = options.depth || 11;
+    const targetDepth = options.depth || 16;
+    const targetMultiPv = options.multiPv || 3;
 
     if (client.worker) {
       client.worker.postMessage('ucinewgame');
@@ -556,7 +544,7 @@ export class StockfishService {
       }
 
       const fen = fens[i];
-      const normKey = `${normalizeFen(fen)}_${targetDepth}`;
+      const normKey = `${normalizeFen(fen)}_${targetDepth}_${targetMultiPv}`;
 
       let evaluation: EngineEvaluation;
 
@@ -565,11 +553,10 @@ export class StockfishService {
       if (terminal) {
         evaluation = terminal;
       } else if (this.positionCache.has(normKey)) {
-        // 2. Reuse consistent cached evaluation if this exact position occurred before (transposition/repetition)
         evaluation = this.positionCache.get(normKey)!;
       } else {
-        // 3. Search on analysisClient at consistent uniform depth
-        evaluation = await this.runSearch(client, fen, targetDepth, 1);
+        // 2. Search on analysisClient at consistent uniform depth with MultiPV
+        evaluation = await this.runSearch(client, fen, targetDepth, targetMultiPv);
         this.positionCache.set(normKey, evaluation);
         await this.waitForReady(client);
       }
@@ -595,30 +582,20 @@ export class StockfishService {
       this.analysisClient.worker.postMessage('stop');
       this.analysisClient.isSearching = false;
     }
-    if (this.interactiveClient.worker && this.interactiveClient.isSearching) {
-      this.interactiveClient.worker.postMessage('stop');
-      this.interactiveClient.isSearching = false;
-    }
   }
 
   public terminate(): void {
-    if (this.analysisClient.worker) {
-      this.analysisClient.worker.terminate();
-      this.analysisClient.worker = null;
-    }
-    if (this.interactiveClient.worker) {
-      this.interactiveClient.worker.terminate();
-      this.interactiveClient.worker = null;
-    }
-    this.positionCache.clear();
+    this.analysisClient.worker?.terminate();
+    this.interactiveClient.worker?.terminate();
   }
 }
 
-// Singleton helper
-let singletonService: StockfishService | null = null;
+// Singleton instance
+let stockfishInstance: StockfishService | null = null;
+
 export function getStockfishService(): StockfishService {
-  if (!singletonService) {
-    singletonService = new StockfishService();
+  if (!stockfishInstance) {
+    stockfishInstance = new StockfishService();
   }
-  return singletonService;
+  return stockfishInstance;
 }

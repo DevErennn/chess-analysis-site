@@ -5,6 +5,7 @@ import type {
   ClassificationCount,
   GameAccuracy,
   EngineEvaluation,
+  EngineScore,
   TurningPoint,
   MissedWin,
   PhaseAdvice,
@@ -12,38 +13,33 @@ import type {
 import { isBookMove } from './openingExplorer';
 
 /**
- * Configuration constants for move classification and accuracy calculation.
- * Centralized for transparency and testing.
+ * Centralized thresholds for move classification and accuracy calculation.
  */
 export const CLASSIFICATION_THRESHOLDS = {
-  // Win% loss thresholds for classification (when not best move)
   EXCELLENT_MAX_LOSS: 2.0,   // Loss <= 2.0% -> Mükemmel (Excellent)
   GOOD_MAX_LOSS: 5.0,        // Loss <= 5.0% -> İyi (Good)
   INACCURACY_MAX_LOSS: 10.0, // Loss 5.0% - 10.0% -> Yanılgı (Inaccuracy)
   MISTAKE_MAX_LOSS: 20.0,    // Loss 10.0% - 20.0% -> Hata (Mistake)
   // Loss > 20.0% -> Gaf (Blunder)
 
-  // Extreme position material loss fallback thresholds (e.g. +8.00 down to +4.00)
-  EXTREME_MISTAKE_CP_LOSS: 300, // Losing >= 300 cp (minor piece) even when still winning
-  EXTREME_BLUNDER_CP_LOSS: 500, // Losing >= 500 cp (rook/queen) even when still winning
-
-  // Brilliant criteria
+  // MultiPV gap thresholds
+  GREAT_MIN_GAP_CP: 80,      // Line 1 is at least 80cp better than Line 2
+  BRILLIANT_MIN_GAP_CP: 100, // Line 1 is at least 100cp better than Line 2
   BRILLIANT_MAX_LOSS: 2.0,
-  BRILLIANT_MAX_WIN_BEFORE: 92.0, // Not already completely won (+9)
-  BRILLIANT_MIN_WIN_AFTER: 40.0,  // Mover is not dead lost after the move
-  BRILLIANT_MIN_MATERIAL_SACRIFICE: 2, // Down at least 2 points (e.g. exchange or minor piece)
+  BRILLIANT_MAX_WIN_BEFORE: 92.0,
+  BRILLIANT_MIN_WIN_AFTER: 40.0,
+  BRILLIANT_MIN_MATERIAL_SACRIFICE: 2,
 };
 
 /**
  * Clamps centipawn evaluation into standard logistic curve range [-1000, 1000]
- * (10 pawns max for win% calculations, as beyond +-10 pawns win chance is effectively 100%/0%).
  */
 export const clampCp = (cp: number): number => {
   return Math.max(-1000, Math.min(1000, cp));
 };
 
 /**
- * Lichess / Chess.com standard logistic Win Percentage formula (0 - 100%):
+ * Pure logistic Win Percentage formula (0 - 100%):
  * winPct(cp) = 50 + 50 * (2 / (1 + exp(-0.00368208 * cp)) - 1)
  */
 export const winPct = (cp: number): number => {
@@ -53,24 +49,69 @@ export const winPct = (cp: number): number => {
 };
 
 /**
- * Calculates win chance from White perspective taking mate into account.
+ * Universal evaluation-to-win-probability function handling CP, Mate, White POV, and Mover POV.
+ * @param evalData Centipawn or discrete mate evaluation from White perspective (+ = White, - = Black)
+ * @param mover Color of the active player ('w' | 'b')
  */
-export function calculateWinChance(cp?: number, mate?: number | null): number {
+export function evaluationToWinProbability(
+  evalData: { cp?: number; mate?: number | null; score?: EngineScore },
+  mover: 'w' | 'b'
+): number {
+  const mate = evalData.score?.type === 'mate'
+    ? evalData.score.mateIn
+    : evalData.mate;
+
+  // Discrete mate evaluation
   if (mate !== null && mate !== undefined) {
-    return mate > 0 ? 100 : 0;
+    if (mover === 'w') {
+      return mate > 0 ? 100 : 0;
+    } else {
+      return mate < 0 ? 100 : 0;
+    }
   }
-  return winPct(cp ?? 0);
+
+  // Centipawn evaluation
+  const cpWhite = evalData.score?.type === 'cp'
+    ? evalData.score.cp
+    : (evalData.cp ?? 0);
+
+  const whiteChance = winPct(cpWhite);
+  return mover === 'w' ? whiteChance : 100 - whiteChance;
 }
 
 /**
- * Returns win percentage from the perspective of the moving player.
- * @param cpWhite Centipawn score from White's perspective (+ = White advantage)
- * @param mover Color of the player making the move ('w' or 'b')
+ * Legacy compatibility alias for mover win%
  */
 export const moverWinPct = (cpWhite: number, mover: 'w' | 'b'): number => {
-  const whiteChance = winPct(cpWhite);
-  return mover === 'w' ? whiteChance : 100 - whiteChance;
+  return evaluationToWinProbability({ cp: cpWhite }, mover);
 };
+
+/**
+ * Legacy compatibility alias for win chance from White perspective
+ */
+export function calculateWinChance(cp?: number, mate?: number | null): number {
+  return evaluationToWinProbability({ cp, mate }, 'w');
+}
+
+/**
+ * Calculates raw centipawn loss from player's POV.
+ */
+export function calculateCpl(
+  evalBefore: EngineEvaluation,
+  evalAfter: EngineEvaluation,
+  mover: 'w' | 'b',
+  isBestMove: boolean
+): number {
+  if (isBestMove) return 0;
+
+  const cpBefore = evalBefore.cp ?? 0;
+  const cpAfter = evalAfter.cp ?? 0;
+
+  const moverCpBefore = mover === 'w' ? cpBefore : -cpBefore;
+  const moverCpAfter = mover === 'w' ? cpAfter : -cpAfter;
+
+  return Math.max(0, moverCpBefore - moverCpAfter);
+}
 
 /**
  * Counts material on board in pawn units: P=1, N=3, B=3, R=5, Q=9.
@@ -90,48 +131,48 @@ export function countMaterial(chess: Chess, color: 'w' | 'b'): number {
   return sum;
 }
 
-export interface SacrificeAnalysisResult {
-  isSacrifice: boolean;
-  sacrificedPieceName?: string;
-  sacrificedSquare?: string;
-  materialDiff?: number;
-}
-
 /**
- * Verifies whether a move represents a genuine material sacrifice by:
- * 1. Playing the move on chess.js
- * 2. Simulating opponent's top PV moves or recaptures for 2-4 plies
- * 3. Checking if the mover is genuinely down >= 2 points of material without immediate recapture
+ * Verifies if a move is a genuine material sacrifice by rolling forward the engine's PV.
  */
 export function verifyMaterialSacrifice(
   fenBefore: string,
   from: string,
   to: string,
   pvStr?: string
-): SacrificeAnalysisResult {
+): {
+  isSacrifice: boolean;
+  sacrificedPieceName?: string;
+  sacrificedSquare?: string;
+  materialDiff?: number;
+} {
   try {
     const chess = new Chess(fenBefore);
     const piece = chess.get(from as any);
-    if (!piece || piece.type === 'p' || piece.type === 'k') {
-      return { isSacrifice: false };
-    }
+    if (!piece) return { isSacrifice: false };
+
+    // Moving a pawn is not considered a major piece sacrifice
+    if (piece.type === 'p') return { isSacrifice: false };
 
     const moverColor = piece.color;
     const opponentColor = moverColor === 'w' ? 'b' : 'w';
 
-    const moverMatBefore = countMaterial(chess, moverColor);
-    const oppMatBefore = countMaterial(chess, opponentColor);
-    const initialBalance = moverMatBefore - oppMatBefore;
+    const initialMoverMat = countMaterial(chess, moverColor);
+    const initialOppMat = countMaterial(chess, opponentColor);
+    const initialBalance = initialMoverMat - initialOppMat;
 
-    // Make the candidate move
-    const move = chess.move({ from, to, promotion: 'q' });
-    if (!move) return { isSacrifice: false };
+    // Execute the played move
+    const moveRes = chess.move({ from, to, promotion: 'q' });
+    if (!moveRes) return { isSacrifice: false };
 
-    // Play out up to 3 PV continuation half-moves if available
+    // Simulate following PV moves (up to 4 half-moves)
     if (pvStr) {
-      const pvMoves = pvStr.trim().split(/\s+/).slice(1, 4); // next 2-3 plies
-      for (const pvUci of pvMoves) {
-        if (pvUci.length >= 4) {
+      const pvTokens = pvStr.trim().split(/\s+/);
+      const startIndex = pvTokens[0]?.toLowerCase() === `${from}${to}`.toLowerCase() ? 1 : 0;
+      const simSteps = Math.min(pvTokens.length, startIndex + 4);
+
+      for (let i = startIndex; i < simSteps; i++) {
+        const pvUci = pvTokens[i];
+        if (pvUci && pvUci.length >= 4) {
           const uFrom = pvUci.slice(0, 2);
           const uTo = pvUci.slice(2, 4);
           const uProm = pvUci.length > 4 ? pvUci.slice(4, 5) : undefined;
@@ -145,7 +186,6 @@ export function verifyMaterialSacrifice(
     const oppMatAfter = countMaterial(chess, opponentColor);
     const balanceAfter = moverMatAfter - oppMatAfter;
 
-    // True sacrifice: mover's relative material balance worsened by at least 2 points (e.g. exchange or minor piece)
     const materialLost = initialBalance - balanceAfter;
 
     if (materialLost >= CLASSIFICATION_THRESHOLDS.BRILLIANT_MIN_MATERIAL_SACRIFICE) {
@@ -170,11 +210,30 @@ export function verifyMaterialSacrifice(
 }
 
 /**
- * Classifies a move using pure, mathematically sound logic:
- * - `loss = moverWin(before) - moverWin(after)`
- * - If `isBestMove`: `loss = 0` (strictly guaranteed)
- * - True material sacrifice verified via PV rollout
- * - Opening book verified against openingExplorer database
+ * Calculates MultiPV gap between best move and 2nd best move from mover's POV.
+ */
+export function getMultiPvGap(evalBefore: EngineEvaluation, color: 'w' | 'b'): number {
+  if (!evalBefore.lines || evalBefore.lines.length < 2) return 0;
+  const line1 = evalBefore.lines[0];
+  const line2 = evalBefore.lines[1];
+
+  const cp1 = line1.cp ?? 0;
+  const cp2 = line2.cp ?? 0;
+
+  const moverCp1 = color === 'w' ? cp1 : -cp1;
+  const moverCp2 = color === 'w' ? cp2 : -cp2;
+
+  return Math.max(0, moverCp1 - moverCp2);
+}
+
+/**
+ * Classifies a move using comprehensive chess engine logic:
+ * - POV-aware Win Probability Loss
+ * - Strict loss=0 guarantee for best moves
+ * - MultiPV context (only move / alternative gap)
+ * - True material sacrifice detection
+ * - Opening book integration
+ * - Critical phase transitions (winning to losing, missed mates)
  */
 export function classifyMove(
   moveSan: string,
@@ -192,13 +251,13 @@ export function classifyMove(
   winChanceBefore: number;
   winChanceAfter: number;
   winChanceLoss: number;
+  cpl: number;
+  accuracy: number;
+  isBook: boolean;
   comment: string;
 } {
-  const cpBefore = evalBefore.cp ?? 0;
-  const cpAfter = evalAfter.cp ?? 0;
-
-  const winBefore = moverWinPct(cpBefore, color);
-  const winAfter = moverWinPct(cpAfter, color);
+  const winBefore = evaluationToWinProbability(evalBefore, color);
+  const winAfter = evaluationToWinProbability(evalAfter, color);
 
   // Check if played move matches engine's top recommendation
   const playedUci = `${from}${to}`.toLowerCase();
@@ -208,27 +267,35 @@ export function classifyMove(
 
   // Core Rule: If the player played the engine's best move, loss is STRICTLY 0
   let winLoss = isBestMove ? 0 : Math.max(0, winBefore - winAfter);
+  const cpl = calculateCpl(evalBefore, evalAfter, color, isBestMove);
+
+  const isBook = isBookMove(allSans, moveIndex);
+  const multiPvGap = getMultiPvGap(evalBefore, color);
 
   let classification: MoveClassification = 'good';
   let comment = '';
 
   // 1. Opening Book Moves Check
-  if (isBookMove(allSans, moveIndex) && winLoss <= 3.0) {
+  if (isBook && winLoss <= 3.0) {
     return {
       classification: 'book',
       winChanceBefore: winBefore,
       winChanceAfter: winAfter,
       winChanceLoss: 0,
+      cpl: 0,
+      accuracy: 100,
+      isBook: true,
       comment: 'Kitap hamlesi (Açılış teorisi devam yolu).',
     };
   }
 
   // 2. Brilliant Move (!!) Check
-  // Conditions:
+  // Requirements:
   // - Best move (or <= 2% loss)
-  // - Mover was not already overwhelmingly winning (winBefore < 92)
-  // - Mover remains strong/advantageous (winAfter >= 40)
-  // - Genuine material sacrifice confirmed by PV rollout
+  // - Position was not already trivial winning
+  // - Player remains strong after the move
+  // - Genuine material sacrifice verified via PV rollout
+  // - MultiPV confirms this is a standout idea (alternatives are clearly inferior or gap >= 80cp)
   if ((isBestMove || winLoss <= CLASSIFICATION_THRESHOLDS.BRILLIANT_MAX_LOSS) &&
       winBefore < CLASSIFICATION_THRESHOLDS.BRILLIANT_MAX_WIN_BEFORE &&
       winAfter >= CLASSIFICATION_THRESHOLDS.BRILLIANT_MIN_WIN_AFTER) {
@@ -241,23 +308,38 @@ export function classifyMove(
         winChanceBefore: winBefore,
         winChanceAfter: winAfter,
         winChanceLoss: 0,
+        cpl: 0,
+        accuracy: 100,
+        isBook: false,
         comment,
       };
     }
   }
 
   // 3. Great Move (!) Check
-  // Game-turning or critical single move that saves the game / secures the win
-  if (isBestMove && winBefore < 48.0 && winAfter >= 50.0) {
-    classification = 'great';
-    comment = '! Pozisyonu tersine çeviren harika ve kritik hamle!';
-    return {
-      classification,
-      winChanceBefore: winBefore,
-      winChanceAfter: winAfter,
-      winChanceLoss: 0,
-      comment,
-    };
+  // Game-turning or standout move where:
+  // - Best move was played
+  // - Position was turned around (deficit -> lead) OR only-move tactical save (MultiPV gap >= 80cp)
+  if (isBestMove) {
+    const turnedPosition = winBefore < 48.0 && winAfter >= 50.0;
+    const onlyWinningMove = multiPvGap >= CLASSIFICATION_THRESHOLDS.GREAT_MIN_GAP_CP && winAfter >= 55.0;
+
+    if (turnedPosition || onlyWinningMove) {
+      classification = 'great';
+      comment = turnedPosition
+        ? '! Pozisyonu tersine çeviren harika ve kritik hamle!'
+        : '! Taktiksel üstünlüğü koruyan tek ve kusursuz hamle!';
+      return {
+        classification,
+        winChanceBefore: winBefore,
+        winChanceAfter: winAfter,
+        winChanceLoss: 0,
+        cpl: 0,
+        accuracy: 100,
+        isBook: false,
+        comment,
+      };
+    }
   }
 
   // 4. Best Move (⭐)
@@ -269,13 +351,27 @@ export function classifyMove(
       winChanceBefore: winBefore,
       winChanceAfter: winAfter,
       winChanceLoss: 0,
+      cpl: 0,
+      accuracy: 100,
+      isBook: false,
       comment,
     };
   }
 
-  if (winLoss > CLASSIFICATION_THRESHOLDS.MISTAKE_MAX_LOSS) {
+  // 5. Categorization when NOT best move
+  // Check for critical game-state collapses (winning -> losing or throwing forced mate)
+  const mateBefore = evalBefore.score?.type === 'mate' ? evalBefore.score.mateIn : evalBefore.mate;
+  const isWinningMateBefore = mateBefore !== null && mateBefore !== undefined && (color === 'w' ? mateBefore > 0 : mateBefore < 0);
+  const threwAwayMate = isWinningMateBefore && winAfter < 80.0;
+  const leadCollapsing = winBefore >= 70.0 && winAfter <= 35.0;
+
+  if (winLoss > CLASSIFICATION_THRESHOLDS.MISTAKE_MAX_LOSS || threwAwayMate || leadCollapsing) {
     classification = 'blunder';
-    comment = 'Büyük hata (Gaf)! Rakibe ciddi bir üstünlük veya taktiksel fırsat verdi.';
+    comment = threwAwayMate
+      ? 'Büyük hata! Zorunlu mat kazancı kaçırıldı.'
+      : leadCollapsing
+      ? 'Büyük hata! Belirgin kazanç pozisyonu kaybedilen konuma düştü.'
+      : 'Büyük hata (Gaf)! Rakibe ciddi bir üstünlük veya taktiksel fırsat verdi.';
   } else if (winLoss > CLASSIFICATION_THRESHOLDS.INACCURACY_MAX_LOSS) {
     classification = 'mistake';
     comment = 'Pozisyonel veya taktiksel hata, daha iyi bir devam yolu vardı.';
@@ -295,6 +391,9 @@ export function classifyMove(
     winChanceBefore: winBefore,
     winChanceAfter: winAfter,
     winChanceLoss: winLoss,
+    cpl,
+    accuracy: calculateMoveAccuracy(winLoss),
+    isBook: false,
     comment,
   };
 }
@@ -310,8 +409,7 @@ export function calculateMoveAccuracy(loss: number): number {
 }
 
 /**
- * Computes game accuracy using Lichess-style volatility-weighted & harmonic mean:
- * Avoids flat arithmetic averages that overstate accuracy in blunder-heavy games.
+ * Computes game accuracy using Lichess-style volatility-weighted & harmonic mean.
  */
 export function calculateAccuracy(moves: MoveAnalysis[]): GameAccuracy {
   const whiteMoves = moves.filter((m) => m.color === 'w');
@@ -320,12 +418,11 @@ export function calculateAccuracy(moves: MoveAnalysis[]): GameAccuracy {
   const computePlayerAccuracy = (list: MoveAnalysis[]): number => {
     if (list.length === 0) return 100;
 
-    // Per-move accuracies
     const accList: number[] = [];
     const losses: number[] = [];
 
     for (const m of list) {
-      if (m.classification === 'book') {
+      if (m.classification === 'book' || m.isBook) {
         accList.push(100);
         losses.push(0);
       } else {
@@ -335,21 +432,15 @@ export function calculateAccuracy(moves: MoveAnalysis[]): GameAccuracy {
       }
     }
 
-    // 1. Mean loss and standard deviation
     const n = list.length;
     const meanLoss = losses.reduce((a, b) => a + b, 0) / n;
     const variance = losses.reduce((a, b) => a + Math.pow(b - meanLoss, 2), 0) / n;
     const stdDev = Math.sqrt(variance);
 
-    // 2. Arithmetic average of move accuracies
     const arithMean = accList.reduce((a, b) => a + b, 0) / n;
-
-    // 3. Harmonic mean of move accuracies (punishes zero/low scores appropriately)
-    const harmonicSum = accList.reduce((acc, score) => acc + 1 / (Math.max(score, 1)), 0);
+    const harmonicSum = accList.reduce((acc, score) => acc + 1 / Math.max(score, 1), 0);
     const harmonicMean = n / harmonicSum;
 
-    // 4. Volatility weighting (Lichess AccuracyPercent model):
-    // Blend harmonic mean and arithmetic mean based on game stability
     const blendWeight = Math.min(1, Math.max(0, stdDev / 15));
     const combined = (1 - blendWeight * 0.4) * arithMean + (blendWeight * 0.4) * harmonicMean;
 
@@ -363,13 +454,13 @@ export function calculateAccuracy(moves: MoveAnalysis[]): GameAccuracy {
 }
 
 /**
- * Counts classifications for White and Black.
+ * Counts move classifications for white and black.
  */
 export function countClassifications(moves: MoveAnalysis[]): {
   white: ClassificationCount;
   black: ClassificationCount;
 } {
-  const createEmpty = (): ClassificationCount => ({
+  const emptyCounts = (): ClassificationCount => ({
     brilliant: 0,
     great: 0,
     best: 0,
@@ -382,15 +473,16 @@ export function countClassifications(moves: MoveAnalysis[]): {
   });
 
   const counts = {
-    white: createEmpty(),
-    black: createEmpty(),
+    white: emptyCounts(),
+    black: emptyCounts(),
   };
 
   for (const m of moves) {
-    const target = m.color === 'w' ? counts.white : counts.black;
-    const cls = m.classification || 'good';
-    if (cls in target) {
-      target[cls]++;
+    const cl = m.classification || 'good';
+    if (m.color === 'w') {
+      counts.white[cl] = (counts.white[cl] || 0) + 1;
+    } else {
+      counts.black[cl] = (counts.black[cl] || 0) + 1;
     }
   }
 
@@ -398,44 +490,46 @@ export function countClassifications(moves: MoveAnalysis[]): {
 }
 
 /**
- * Detects the biggest Turning Point of the game based on win% loss.
+ * Detects the pivotal turning point based on Win Probability swing and lead change.
  */
 export function detectTurningPoint(moves: MoveAnalysis[]): TurningPoint | null {
-  let worstMove: MoveAnalysis | null = null;
-  let maxSwing = 0;
+  if (moves.length === 0) return null;
+
+  let bestCandidate: MoveAnalysis | null = null;
+  let maxImpactScore = 0;
 
   for (const m of moves) {
-    if (m.classification === 'blunder' || m.classification === 'mistake') {
-      const swing = m.winChanceLoss ?? 0;
-      const wasCompetitive = (m.winChanceBefore ?? 50) >= 30 && (m.winChanceBefore ?? 50) <= 85;
-      const effectiveScore = swing + (wasCompetitive ? 15 : 0);
+    const winBefore = m.winChanceBefore ?? 50;
+    const winAfter = m.winChanceAfter ?? 50;
+    const loss = m.winChanceLoss ?? 0;
 
-      if (effectiveScore > maxSwing) {
-        maxSwing = effectiveScore;
-        worstMove = m;
-      }
+    // A lead change or major swing is heavily weighted
+    const leadChange = (winBefore >= 55 && winAfter <= 45) || (winBefore <= 45 && winAfter >= 55);
+    const impactScore = loss + (leadChange ? 25 : 0);
+
+    if (impactScore > maxImpactScore && loss >= 15) {
+      maxImpactScore = impactScore;
+      bestCandidate = m;
     }
   }
 
-  if (!worstMove || (worstMove.winChanceLoss ?? 0) < 15) {
-    return null;
-  }
+  if (!bestCandidate) return null;
 
-  const moverColor = worstMove.color === 'w' ? 'Beyaz' : 'Siyah';
-  const opponentColor = worstMove.color === 'w' ? 'Siyah' : 'Beyaz';
-  const moveLabel = `${worstMove.moveNumber}${worstMove.color === 'w' ? '.' : '...'} ${worstMove.san}`;
+  const moverColor = bestCandidate.color === 'w' ? 'Beyaz' : 'Siyah';
+  const opponentColor = bestCandidate.color === 'w' ? 'Siyah' : 'Beyaz';
+  const moveLabel = `${bestCandidate.moveNumber}${bestCandidate.color === 'w' ? '.' : '...'} ${bestCandidate.san}`;
 
   return {
-    moveIndex: worstMove.moveIndex,
-    moveNumber: worstMove.moveNumber,
-    color: worstMove.color,
-    san: worstMove.san,
-    from: worstMove.from,
-    to: worstMove.to,
-    evalBefore: worstMove.evalBefore ?? 0,
-    evalAfter: worstMove.evalAfter ?? 0,
-    winChanceLoss: worstMove.winChanceLoss ?? 0,
-    description: `${moveLabel} hamlesi oyunun kırılma anı oldu. ${moverColor} bu hamleyle %${(worstMove.winChanceLoss ?? 0).toFixed(0)} galibiyet şansı kaybederek inisiyatifi ${opponentColor} taşlara devretti.`,
+    moveIndex: bestCandidate.moveIndex,
+    moveNumber: bestCandidate.moveNumber,
+    color: bestCandidate.color,
+    san: bestCandidate.san,
+    from: bestCandidate.from,
+    to: bestCandidate.to,
+    evalBefore: bestCandidate.evalBefore ?? 0,
+    evalAfter: bestCandidate.evalAfter ?? 0,
+    winChanceLoss: bestCandidate.winChanceLoss ?? 0,
+    description: `${moveLabel} hamlesi oyunun kırılma anı oldu. ${moverColor} bu hamleyle %${(bestCandidate.winChanceLoss ?? 0).toFixed(0)} galibiyet şansı kaybederek inisiyatifi ${opponentColor} taşlara devretti.`,
   };
 }
 
@@ -464,12 +558,46 @@ export function detectMissedWins(moves: MoveAnalysis[]): MissedWin[] {
 }
 
 /**
- * Calculates phase advice based on accuracy across Opening, Middlegame, and Endgame.
+ * Dynamic Phase Analysis based on real piece count, material weight, and queens.
  */
 export function calculatePhaseAdvice(moves: MoveAnalysis[]): PhaseAdvice {
-  const openingMoves = moves.slice(0, 16);
-  const middlegameMoves = moves.slice(16, 60);
-  const endgameMoves = moves.slice(60);
+  if (moves.length === 0) {
+    return {
+      opening: { score: 100, comment: 'Açılış aşaması.' },
+      middlegame: { score: 100, comment: 'Oyun ortası.' },
+      endgame: { score: 100, comment: 'Oyun sonu.' },
+      weakestPhase: 'opening',
+    };
+  }
+
+  const openingMoves: MoveAnalysis[] = [];
+  const middlegameMoves: MoveAnalysis[] = [];
+  const endgameMoves: MoveAnalysis[] = [];
+
+  for (let i = 0; i < moves.length; i++) {
+    const m = moves[i];
+    const fen = m.fenBefore;
+
+    // Piece census from FEN
+    const piecePart = fen.split(' ')[0] || '';
+    const hasWhiteQueen = piecePart.includes('Q');
+    const hasBlackQueen = piecePart.includes('q');
+    const queensCount = (hasWhiteQueen ? 1 : 0) + (hasBlackQueen ? 1 : 0);
+
+    // Minor & major piece count (excluding pawns and kings)
+    const majorMinors = (piecePart.match(/[rnbqRNBQ]/g) || []).length;
+
+    // Opening: First 12 moves, or theoretical/development phase
+    if (i < 16 && majorMinors >= 10) {
+      openingMoves.push(m);
+    } else if (queensCount === 0 || majorMinors <= 6) {
+      // Endgame: Queens traded off OR very few pieces remaining
+      endgameMoves.push(m);
+    } else {
+      // Middlegame: Active queens, coordinated pieces
+      middlegameMoves.push(m);
+    }
+  }
 
   const getPhaseScore = (list: MoveAnalysis[]): number => {
     if (list.length === 0) return 85;

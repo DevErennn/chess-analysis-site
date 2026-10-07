@@ -25,15 +25,18 @@ export const DebugTable: React.FC<DebugTableProps> = ({
         onClick={() => setIsOpen(!isOpen)}
         className="px-4 py-3 bg-amber-950/40 border-b border-amber-500/30 flex items-center justify-between cursor-pointer select-none hover:bg-amber-950/60 transition-colors"
       >
-        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
           <Bug className="w-4 h-4 text-amber-400" />
           <span className="font-bold text-amber-200">Geliştirici Teşhis & Debug Tablosu (?debug=1)</span>
           <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
             {moves.length} Hamle
           </span>
+          <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-semibold">
+            Engine: Stockfish 16 NNUE WASM (MultiPV: 3)
+          </span>
         </div>
         <div className="flex items-center gap-2 text-gray-400">
-          <span className="text-[11px] hidden sm:inline">Eval, Win%, Kayıp & Motor Verisi</span>
+          <span className="text-[11px] hidden sm:inline">Eval, Win%, CPL, Acc & Motor Verisi</span>
           {isOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
         </div>
       </div>
@@ -51,7 +54,9 @@ export const DebugTable: React.FC<DebugTableProps> = ({
                 <th className="p-2.5 text-right">Eval Sonra</th>
                 <th className="p-2.5 text-right">Win% Önce</th>
                 <th className="p-2.5 text-right">Win% Sonra</th>
-                <th className="p-2.5 text-right text-amber-300">Kayıp (Loss)</th>
+                <th className="p-2.5 text-right text-amber-300">Win Loss</th>
+                <th className="p-2.5 text-right text-violet-300">CP Loss</th>
+                <th className="p-2.5 text-right text-cyan-300">Doğruluk</th>
                 <th className="p-2.5">En İyi (Best)</th>
                 <th className="p-2.5">Oynanan (UCI)</th>
                 <th className="p-2.5 text-center">Best?</th>
@@ -108,6 +113,12 @@ export const DebugTable: React.FC<DebugTableProps> = ({
                           %{m.winChanceLoss.toFixed(1)}
                         </span>
                       ) : '-'}
+                    </td>
+                    <td className="p-2 text-right font-mono text-violet-300">
+                      {m.cpl !== undefined ? `${Math.round(m.cpl)} cp` : '-'}
+                    </td>
+                    <td className="p-2 text-right font-mono text-cyan-300 font-bold">
+                      {m.accuracy !== undefined ? `%${Math.round(m.accuracy)}` : '-'}
                     </td>
                     <td className="p-2 text-emerald-400 font-mono">
                       {m.bestMoveSan || m.bestMoveUci || '-'}

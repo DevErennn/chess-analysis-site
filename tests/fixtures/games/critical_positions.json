@@ -1,0 +1,38 @@
+[
+  {
+    "id": "queen-sacrifice-brilliant",
+    "description": "7. Queen sacrifice that leads to forced win",
+    "fenBefore": "r1b2rk1/pp1p1pp1/1b1p2B1/n1q1p1p1/4P3/1QPP4/PP3PPP/R4RK1 w - - 0 16",
+    "from": "b3",
+    "to": "f7",
+    "san": "Qxf7+",
+    "color": "w"
+  },
+  {
+    "id": "castling",
+    "description": "14. Kingside Castling",
+    "fenBefore": "r1bqk2r/pppp1ppp/2n2n2/2b1p3/2B1P3/3P1N2/PPP2PPP/RNBQK2R w KQkq - 4 5",
+    "from": "e1",
+    "to": "g1",
+    "san": "O-O",
+    "color": "w"
+  },
+  {
+    "id": "en-passant",
+    "description": "15. En Passant pawn capture",
+    "fenBefore": "rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 3",
+    "from": "e5",
+    "to": "f6",
+    "san": "exf6",
+    "color": "w"
+  },
+  {
+    "id": "pawn-promotion",
+    "description": "16. Pawn promotion to Queen",
+    "fenBefore": "8/4P3/8/8/8/8/4k3/4K3 w - - 0 1",
+    "from": "e7",
+    "to": "e8",
+    "san": "e8=Q+",
+    "color": "w"
+  }
+]

@@ -108,7 +108,24 @@ export const MistakePracticeModal: React.FC<MistakePracticeModalProps> = ({
       const playedUci = `${sourceSquare}${targetSquare}`.toLowerCase();
       const targetBestUci = (currentMistake.bestMoveUci || '').toLowerCase().slice(0, 4);
 
-      if (playedUci === targetBestUci || move.san === currentMistake.bestMoveSan) {
+      // Check primary best move
+      let isCorrect = playedUci === targetBestUci || move.san === currentMistake.bestMoveSan;
+
+      // Also accept viable alternatives from MultiPV if score difference is negligible (<= 25 cp)
+      if (!isCorrect && currentMistake.multiPvLines && currentMistake.multiPvLines.length > 0) {
+        const topCp = currentMistake.multiPvLines[0]?.cp ?? currentMistake.evalBefore ?? 0;
+        const matchingAlt = currentMistake.multiPvLines.find((line) => {
+          const uciCandidate = (line.bestMoveUci || '').toLowerCase().slice(0, 4);
+          return uciCandidate === playedUci;
+        });
+        if (matchingAlt && matchingAlt.cp !== undefined) {
+          if (Math.abs(matchingAlt.cp - topCp) <= 25) {
+            isCorrect = true;
+          }
+        }
+      }
+
+      if (isCorrect) {
         setStatus('success');
         setSolvedCount((prev) => ({ ...prev, [currentIndex]: true }));
         playBrilliantSound();
