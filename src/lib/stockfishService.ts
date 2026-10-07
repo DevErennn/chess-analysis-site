@@ -91,7 +91,7 @@ export class StockfishService {
         typeof WebAssembly === 'object' &&
         typeof WebAssembly.validate === 'function';
       const workerUrl = wasmSupported
-        ? '/stockfish/stockfish.wasm.js'
+        ? '/stockfish/stockfish-nnue-16.js'
         : '/stockfish/stockfish.js';
 
       client.worker = new Worker(workerUrl);
