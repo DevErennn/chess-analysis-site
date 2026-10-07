@@ -1,63 +1,124 @@
-# ♟️ Chess Game Review - Client-Side Analysis Platform
+# ♟️ Chess Game Review - Client-Side Chess Analysis Platform
 
-Chess.com ve Lichess'in ücretli "Game Review" (Oyun İnceleme) özelliklerine alternatif, tamamen ücretsiz, açık kaynaklı ve istemci tarafında (tarayıcıda Stockfish Web Worker ile) çalışan satranç analiz web uygulaması.
-
----
-
-## 🚀 Özellikler
-
-- **%100 Ücretsiz & Sınırsız:** Hiçbir üyelik veya abonelik gerektirmez.
-- **Sıfır Sunucu Maliyeti (Client-Side):** Tüm motor hesaplamaları kullanıcının tarayıcısında WebAssembly (WASM) ve Web Worker ile çalışır.
-- **Çoklu Veri Girişi:**
-  - PGN yapıştırma veya dosya yükleme
-  - Chess.com API entegrasyonu ile son 10 maçı otomatik çekme
-- **Detaylı Hamle Sınıflaması:**
-  - `!!` Brilliant (Göz Alıcı)
-  - `⭐` Best (En İyi Hamle)
-  - `✅` Excellent (Mükemmel)
-  - `?!` Inaccuracy (Şüpheli)
-  - `?` Mistake (Hata)
-  - `??` Blunder (Büyük Hata)
-- **Görsel Geri Bildirim:** Dinamik Değerlendirme Çubuğu (Eval Bar), tahta üstü en iyi hamle okları (arrows), doğruluk oranı (Accuracy %).
+A modern, high-performance, and open-source chess analysis platform running **Stockfish 16 NNUE** directly in the browser via WebAssembly and Web Workers. Zero server costs, privacy-focused, and completely free.
 
 ---
 
-## 🛠️ Teknoloji Yığını
+## ✨ Features
 
-- **Frontend:** React 19 + TypeScript + Vite
-- **Stil / Tasarım:** Tailwind CSS (Özel Satranç Koyu Teması) + Lucide React
-- **Satranç Mantığı:** `chess.js`
-- **Satranç Tahtası UI:** `react-chessboard`
-- **Satranç Motoru:** `Stockfish` (WebAssembly & Web Worker)
+- **🚀 100% Client-Side Engine:** Powered by Stockfish 16 NNUE WASM running in dedicated Web Workers without slowing down the UI thread.
+- **📊 Granular Move Classifications:**
+  - `‼️` **Brilliant:** Sound tactical material sacrifices verified across PV candidate lines.
+  - `!` **Great:** Game-turning moves or critical only-winning solutions based on Multi-PV gaps.
+  - `⭐` **Best:** Engine's top recommended choice.
+  - `✅` **Excellent & Good:** Solid positional play with negligible win percentage loss.
+  - `?!` **Inaccuracy:** Minor loss of advantage.
+  - `?` **Mistake:** Notable tactical or positional oversight.
+  - `??` **Blunder:** Serious mistake, missed mate, or game-losing move.
+  - `📖` **Book:** Opening theory detection with ECO database integration.
+- **🎯 Non-linear Accuracy Model:** Evaluates game accuracy using harmonic and volatility-weighted win probability metrics.
+- **🔄 Multi-PV Candidate Analysis:** Simultaneously calculates top 3 candidate variations with dynamic evaluation gaps.
+- **🧭 Dynamic Phase Analysis:** Intelligently categorizes Opening, Middlegame, and Endgame based on piece count and pawn structure rather than arbitrary move counts.
+- **⚡ Turning Point Detection:** Pinpoints the exact pivotal moves that altered the outcome of the match.
+- **🧩 Mistake Practice Trainer:** Interactive puzzle mode enabling players to replay mistakes and discover top engine recommendations.
+- **🧪 Interactive Sandbox Mode:** Free-play board allowing users to explore alternative branches at any move without losing game context.
+- **📥 Multi-Source Game Importer:**
+  - Raw PGN input and file upload
+  - Direct Chess.com user game archives fetch
+  - Direct Lichess user game archives fetch
+- **📈 Visual Evaluation Bar & Graph:** Smooth evaluation curve rendering with discrete checkmate handling.
+- **📤 Export & Share:** Export annotated PGN and generate social game review summary cards.
 
 ---
 
-## 🗺️ Geliştirme Yol Haritası
+## 🛠️ Tech Stack
 
-- [x] **Adım 1:** Vite + React + TypeScript + Tailwind CSS kurulumu, kütüphanelerin entegrasyonu ve tip mimarisi.
-- [x] **Adım 2:** Veri Giriş Ekranı (PGN Yapıştırma ve Chess.com API ile son 10 maçı çekme) - *([Detaylar için STEP_2_PROMPT.md dosyasına bakın](./STEP_2_PROMPT.md))*
-- [x] **Adım 3 & 4:** Stockfish Web Worker Entegrasyonu, Eval Bar, Hamle Sınıflandırma ve Doğruluk Algoritması - *([Detaylar için STEP_3_PROMPT.md dosyasına bakın](./STEP_3_PROMPT.md))*
-- [x] **Adım 4 & 5 (Polish & Production):** Web Audio ses efektleri, ECO açılış tespiti, analizli PGN & sosyal rapor paylaşımı, mobil optimizasyon ve Vercel COOP/COEP headers.
-- [ ] **Adım 5 (İleri Seviye Eklentiler):** Lichess API entegrasyonu, hata tekrarı (Mistake Trainer puzzle modu), Multi-PV çoklu motor hatları ve görsel PNG paylaşımı - *([Detaylar için STEP_5_PROMPT.md dosyasına bakın](./STEP_5_PROMPT.md))*
+- **Framework:** React 19 + TypeScript + Vite
+- **Styling:** Vanilla CSS + Tailwind CSS (Custom Dark Chess Palette) + Lucide Icons
+- **Chess Logic:** `chess.js`
+- **Board UI:** `react-chessboard`
+- **Engine:** `stockfish` 16.0.0 NNUE (Single-threaded WebAssembly & Web Worker)
+- **Deployment:** Vercel (Configured with SPA rewrites and caching headers)
 
 ---
 
-## 💻 Kurulum ve Çalıştırma
+## 🚀 Getting Started
 
-Projeyi yerel ortamınızda çalıştırmak için:
+### Prerequisites
+
+- Node.js 18.x or higher
+- npm, yarn, or pnpm
+
+### Installation
 
 ```bash
-# Bağımlılıkları yükleyin
+# Clone the repository
+git clone https://github.com/DevErennn/chess-analysis-site.git
+cd chess-analysis-site
+
+# Install dependencies
 npm install
 
-# Geliştirme sunucusunu başlatın
+# Run the local development server
 npm run dev
+```
 
-# Üretim derlemesi oluşturun
+Open [http://localhost:5173](http://localhost:5173) in your browser to start analyzing games.
+
+### Production Build
+
+```bash
+# Build the production bundle
 npm run build
+
+# Preview the production build locally
+npm run preview
+```
+
+### Running Tests
+
+```bash
+# Run unit and engine scenario tests
+npm test
+
+# Run linter
+npm run lint
 ```
 
 ---
 
-## 🤖 AI Ajanı ile Geliştirmeye Devam Etme
-Eğer bir AI yardımcısı (Cursor, Claude, ChatGPT, Antigravity vb.) ile sonraki adımı geliştirecekseniz, kök dizindeki [`STEP_3_PROMPT.md`](./STEP_3_PROMPT.md) dosyasının içeriğini doğrudan AI ajanınıza yapıştırabilirsiniz.
+## 📐 Architecture & Pipeline
+
+```text
+PGN Input / API Importer
+       │
+       ▼
+FEN Sequence Generation (chess.js)
+       │
+       ▼
+Stockfish 16 NNUE WASM Worker (MultiPV = 3, Depth 18)
+       │
+       ▼
+Universal Perspective Normalization (White POV vs Mover POV)
+       │
+       ▼
+Logistic Win Probability (evaluationToWinProbability)
+       │
+       ▼
+Centipawn Loss (CPL) & Win% Loss Calculation
+       │
+       ▼
+Move Classification & Sacrifice Verification
+       │
+       ▼
+Accuracy Scoring (Harmonic Mean & Volatility Weighting)
+       │
+       ▼
+Turning Point Detection, Phase Analysis & Interactive Practice
+```
+
+---
+
+## 📄 License
+
+This project is open-source and available under the [MIT License](LICENSE).
