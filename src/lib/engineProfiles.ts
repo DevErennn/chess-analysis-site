@@ -16,9 +16,9 @@ export const ENGINE_PROFILES: Record<EngineProfileId, EngineProfile> = {
     id: 'stockfish-16',
     name: 'Stockfish 16 NNUE (Standart)',
     shortName: 'Stockfish 16',
-    tagline: 'Dengeli & Güvenilir Analiz (Derinlik 14)',
+    tagline: 'Dengeli & Güvenilir Analiz (Derinlik 11)',
     description: 'Dünya şampiyonu Stockfish 16 sinir ağı (NNUE) motoru. Konumsal ve taktiksel dengeli derinlikte tutarlı oyun incelemesi.',
-    defaultDepth: 14,
+    defaultDepth: 11,
     badgeColor: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/30',
   },
   'tactical-depth': {

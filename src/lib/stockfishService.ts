@@ -144,6 +144,28 @@ export class StockfishService {
     }
   }
 
+  public waitForReady(client: WorkerClient): Promise<void> {
+    return new Promise((resolve) => {
+      if (!client.worker) {
+        resolve();
+        return;
+      }
+      const readyHandler = (e: MessageEvent) => {
+        const raw = typeof e.data === 'string' ? e.data : '';
+        if (raw.includes('readyok')) {
+          client.worker?.removeEventListener('message', readyHandler);
+          resolve();
+        }
+      };
+      client.worker.addEventListener('message', readyHandler);
+      client.worker.postMessage('isready');
+      setTimeout(() => {
+        client.worker?.removeEventListener('message', readyHandler);
+        resolve();
+      }, 500);
+    });
+  }
+
   public async waitReady(): Promise<void> {
     await Promise.all([
       this.waitClientReady(this.analysisClient),
@@ -281,7 +303,9 @@ export class StockfishService {
           // Parse bestmove
           if (line.startsWith('bestmove')) {
             const parts = line.split(/\s+/);
-            bestMoveUci = parts[1] || '';
+            const parsedMove = parts[1] || '';
+            const pvFirstMove = lastPv ? lastPv.trim().split(/\s+/)[0] : '';
+            bestMoveUci = (parsedMove && parsedMove !== '(none)') ? parsedMove : pvFirstMove;
 
             // Convert UCI to SAN
             let bestMoveSan = bestMoveUci;
@@ -517,7 +541,7 @@ export class StockfishService {
     const client = this.analysisClient;
     const results: EngineEvaluation[] = [];
     const total = fens.length;
-    const targetDepth = options.depth || 14;
+    const targetDepth = options.depth || 11;
 
     if (client.worker) {
       client.worker.postMessage('ucinewgame');
@@ -547,6 +571,7 @@ export class StockfishService {
         // 3. Search on analysisClient at consistent uniform depth
         evaluation = await this.runSearch(client, fen, targetDepth, 1);
         this.positionCache.set(normKey, evaluation);
+        await this.waitForReady(client);
       }
 
       results.push(evaluation);

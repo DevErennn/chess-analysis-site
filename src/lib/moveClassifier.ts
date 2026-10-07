@@ -209,11 +209,6 @@ export function classifyMove(
   // Core Rule: If the player played the engine's best move, loss is STRICTLY 0
   let winLoss = isBestMove ? 0 : Math.max(0, winBefore - winAfter);
 
-  // Centipawn loss from mover's perspective
-  const moverCpBefore = color === 'w' ? cpBefore : -cpBefore;
-  const moverCpAfter = color === 'w' ? cpAfter : -cpAfter;
-  const cpLoss = isBestMove ? 0 : Math.max(0, moverCpBefore - moverCpAfter);
-
   let classification: MoveClassification = 'good';
   let comment = '';
 
@@ -278,12 +273,10 @@ export function classifyMove(
     };
   }
 
-  // 5. Categorization when NOT best move (using winLoss as primary, cpLoss as secondary for extreme positions)
-  // Check for extreme piece blunders even in lopsided winning positions:
-  if (winLoss > CLASSIFICATION_THRESHOLDS.MISTAKE_MAX_LOSS || cpLoss >= CLASSIFICATION_THRESHOLDS.EXTREME_BLUNDER_CP_LOSS) {
+  if (winLoss > CLASSIFICATION_THRESHOLDS.MISTAKE_MAX_LOSS) {
     classification = 'blunder';
     comment = 'Büyük hata (Gaf)! Rakibe ciddi bir üstünlük veya taktiksel fırsat verdi.';
-  } else if (winLoss > CLASSIFICATION_THRESHOLDS.INACCURACY_MAX_LOSS || cpLoss >= CLASSIFICATION_THRESHOLDS.EXTREME_MISTAKE_CP_LOSS) {
+  } else if (winLoss > CLASSIFICATION_THRESHOLDS.INACCURACY_MAX_LOSS) {
     classification = 'mistake';
     comment = 'Pozisyonel veya taktiksel hata, daha iyi bir devam yolu vardı.';
   } else if (winLoss > CLASSIFICATION_THRESHOLDS.GOOD_MAX_LOSS) {
