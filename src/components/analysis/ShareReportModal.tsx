@@ -75,7 +75,7 @@ export const ShareReportModal: React.FC<ShareReportModalProps> = ({
       ``,
       `💬 Koç: "${coachSummary.slice(0, 120)}${coachSummary.length > 120 ? '...' : ''}"`,
       `━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-      `⚡ Analiz Platformu: Stockfish WebAssembly & CAPS2`,
+      `⚡ Analiz Platformu: Stockfish WebAssembly & Doğruluk Modeli`,
     ]
       .filter((line) => line !== undefined)
       .join('\n');
@@ -345,7 +345,7 @@ export const ShareReportModal: React.FC<ShareReportModalProps> = ({
       // Bottom Watermark
       ctx.fillStyle = '#64748b';
       ctx.font = '600 15px Inter, sans-serif';
-      ctx.fillText('Stockfish 16 WASM & CAPS2 Doğruluk Algoritması', 60, 545);
+      ctx.fillText('Stockfish 16 WASM & Açık Kaynak Doğruluk Modeli', 60, 545);
 
       ctx.textAlign = 'right';
       ctx.fillText('Chess Analysis Site', 1140, 545);

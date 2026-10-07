@@ -147,7 +147,7 @@ export const AnalysisControls: React.FC<AnalysisControlsProps> = ({
           <div className="grid grid-cols-2 gap-1.5">
             {(Object.values(ENGINE_PROFILES) as (typeof currentProfile)[]).map((prof) => {
               const isSelected = prof.id === profileId;
-              const Icon = prof.id === 'torch-tactical' ? Flame : prof.id === 'master-deep' ? Crown : prof.id === 'fast-scan' ? Zap : Cpu;
+              const Icon = prof.id === 'tactical-depth' ? Flame : prof.id === 'master-deep' ? Crown : prof.id === 'fast-scan' ? Zap : Cpu;
               return (
                 <button
                   key={prof.id}

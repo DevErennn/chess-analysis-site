@@ -417,3 +417,40 @@ export function detectOpening(
 
   return null;
 }
+
+/**
+ * Checks whether the move at moveIndex is part of standard opening theory (Book move).
+ */
+export function isBookMove(playedSans: string[], moveIndex: number): boolean {
+  if (moveIndex < 0 || moveIndex >= playedSans.length) return false;
+
+  // 1. Check against POPULAR_OPENINGS database
+  for (const def of POPULAR_OPENINGS) {
+    if (def.moves.length > moveIndex) {
+      let matches = true;
+      for (let i = 0; i <= moveIndex; i++) {
+        if (def.moves[i] !== playedSans[i]) {
+          matches = false;
+          break;
+        }
+      }
+      if (matches) return true;
+    }
+  }
+
+  // 2. Standard first plies theory fallback
+  if (moveIndex === 0) {
+    return ['e4', 'd4', 'c4', 'Nf3', 'g3', 'f4', 'b3', 'Nc3'].includes(playedSans[0]);
+  }
+  if (moveIndex === 1) {
+    const w = playedSans[0];
+    const b = playedSans[1];
+    if (w === 'e4' && ['c5', 'e5', 'e6', 'c6', 'd6', 'd5', 'Nf6', 'g6', 'b6'].includes(b)) return true;
+    if (w === 'd4' && ['d5', 'Nf6', 'e6', 'g6', 'c5', 'd6', 'f5'].includes(b)) return true;
+    if (w === 'c4' && ['e5', 'c5', 'Nf6', 'e6', 'c6'].includes(b)) return true;
+    if (w === 'Nf3' && ['d5', 'Nf6', 'c5', 'g6'].includes(b)) return true;
+  }
+
+  return false;
+}
+
