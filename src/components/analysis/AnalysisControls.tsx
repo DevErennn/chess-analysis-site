@@ -190,11 +190,26 @@ export const AnalysisControls: React.FC<AnalysisControlsProps> = ({
               onChange={(e) => onChangeDepth(Number(e.target.value))}
               className="bg-chess-card border border-chess-border text-white text-xs rounded-lg px-2 py-1 outline-none focus:border-chess-accent cursor-pointer disabled:opacity-50"
             >
-              <option value={10}>10 (Hızlı)</option>
-              <option value={12}>12 (Standart)</option>
-              <option value={14}>14 (Derin)</option>
-              <option value={16}>16 (Usta)</option>
-              <option value={18}>18 (Maksimum)</option>
+              {Array.from(
+                new Set([
+                  ...Object.values(ENGINE_PROFILES).map((p) => p.defaultDepth),
+                  depth,
+                ])
+              )
+                .sort((a, b) => a - b)
+                .map((d) => {
+                  const matchingProfile = Object.values(ENGINE_PROFILES).find(
+                    (p) => p.defaultDepth === d
+                  );
+                  const label = matchingProfile
+                    ? matchingProfile.shortName.replace(/ \(.*\)/, '')
+                    : 'Özel';
+                  return (
+                    <option key={d} value={d}>
+                      {d} ({label})
+                    </option>
+                  );
+                })}
             </select>
           </div>
         </div>

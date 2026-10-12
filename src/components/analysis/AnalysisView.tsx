@@ -63,8 +63,8 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
 }) => {
   const [copied, setCopied] = useState(false);
   const [orientation, setOrientation] = useState<'white' | 'black'>('white');
-  const [depth, setDepth] = useState<number>(18);
-  const [profileId, setProfileId] = useState<EngineProfileId>('stockfish-16');
+  const [depth, setDepth] = useState<number>(14);
+  const [profileId, setProfileId] = useState<EngineProfileId>('fast-scan');
   const [isPlaying, setIsPlaying] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisProgress, setAnalysisProgress] = useState(0);
@@ -83,6 +83,7 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
   const [sandboxMoves, setSandboxMoves] = useState<{ san: string; from: string; to: string }[]>([]);
   const [sandboxEval, setSandboxEval] = useState<EngineEvaluation | null>(null);
   const [isSandboxThinking, setIsSandboxThinking] = useState(false);
+  const [sandboxActiveMove, setSandboxActiveMove] = useState<MoveAnalysis | null>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const playTimerRef = useRef<number | null>(null);
@@ -301,6 +302,7 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
     setIsSandboxMode(true);
     setSandboxFen(currentFen);
     setSandboxMoves([]);
+    setSandboxActiveMove(null);
     setSandboxEval(null);
     setIsSandboxThinking(true);
 
@@ -318,6 +320,7 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
     setIsSandboxMode(false);
     setSandboxFen('');
     setSandboxMoves([]);
+    setSandboxActiveMove(null);
     setSandboxEval(null);
     setIsSandboxThinking(false);
   };
@@ -325,6 +328,7 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
   const handleResetSandbox = () => {
     setSandboxFen(currentFen);
     setSandboxMoves([]);
+    setSandboxActiveMove(null);
     setIsSandboxThinking(true);
 
     const reqId = ++sandboxRequestIdRef.current;
@@ -347,9 +351,34 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
       if (!move) return false;
 
       const nextFen = chess.fen();
+      const prevFen = sandboxFen;
+      const prevEval = sandboxEval;
+
       setSandboxFen(nextFen);
       setSandboxMoves((prev) => [...prev, { san: move.san, from: sourceSquare, to: targetSquare }]);
       playMoveSound();
+
+      // Check if played move matches previous engine best move
+      const playedUci = `${sourceSquare}${targetSquare}`.toLowerCase();
+      const bestUci = (prevEval?.bestMoveUci || '').toLowerCase().slice(0, 4);
+      const isBest = bestUci.length >= 4 && playedUci === bestUci;
+
+      // Optimistic classification on destination square
+      const optimisticClassification: MoveClassification = isBest ? 'best' : 'good';
+      setSandboxActiveMove({
+        moveNumber: Math.floor(sandboxMoves.length / 2) + 1,
+        moveIndex: sandboxMoves.length,
+        color: move.color,
+        san: move.san,
+        from: sourceSquare,
+        to: targetSquare,
+        fenBefore: prevFen,
+        fenAfter: nextFen,
+        classification: optimisticClassification,
+        comment: isBest ? 'Motorun önerdiği en güçlü hamle.' : 'Hamle oynandı.',
+        bestMoveUci: prevEval?.bestMoveUci,
+        bestMoveSan: prevEval?.bestMoveSan,
+      });
 
       setIsSandboxThinking(true);
       const reqId = ++sandboxRequestIdRef.current;
@@ -357,6 +386,43 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
         if (sandboxRequestIdRef.current === reqId) {
           setSandboxEval(res);
           setIsSandboxThinking(false);
+
+          // Once evaluation finishes, compute precise classification
+          if (prevEval && res) {
+            const classRes = classifyMove(
+              move.san,
+              sourceSquare,
+              targetSquare,
+              move.color,
+              prevFen,
+              nextFen,
+              prevEval,
+              res,
+              sandboxMoves.length,
+              sandboxMoves.map((m) => m.san)
+            );
+
+            setSandboxActiveMove({
+              moveNumber: Math.floor(sandboxMoves.length / 2) + 1,
+              moveIndex: sandboxMoves.length,
+              color: move.color,
+              san: move.san,
+              from: sourceSquare,
+              to: targetSquare,
+              fenBefore: prevFen,
+              fenAfter: nextFen,
+              evalBefore: prevEval.cp,
+              evalAfter: res.cp,
+              classification: classRes.classification,
+              comment: classRes.comment,
+              winChanceBefore: classRes.winChanceBefore,
+              winChanceAfter: classRes.winChanceAfter,
+              winChanceLoss: classRes.winChanceLoss,
+              accuracy: classRes.accuracy,
+              bestMoveUci: prevEval.bestMoveUci,
+              bestMoveSan: prevEval.bestMoveSan,
+            });
+          }
         }
       });
 
@@ -675,7 +741,7 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
                 <BoardWithArrows
                   fen={isSandboxMode ? sandboxFen : currentFen}
                   orientation={orientation}
-                  activeMove={isSandboxMode ? undefined : activeMove}
+                  activeMove={isSandboxMode ? (sandboxActiveMove ?? undefined) : activeMove}
                   showBestMoveArrow={!isSandboxMode}
                   isSandboxMode={isSandboxMode}
                   onPieceDrop={handleSandboxPieceDrop}
@@ -757,6 +823,20 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
                     </div>
                   )}
                 </div>
+
+                {/* Sandbox Last Move Feedback */}
+                {sandboxActiveMove?.classification && (
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-chess-surface/60 border border-indigo-500/30 text-xs animate-in fade-in">
+                    <ClassificationBadge
+                      classification={sandboxActiveMove.classification}
+                      size="sm"
+                    />
+                    <span className="text-gray-200">
+                      <strong className="text-white mr-1">{sandboxActiveMove.san}:</strong>
+                      <span className="text-gray-300">{sandboxActiveMove.comment || 'Hamle oynandı.'}</span>
+                    </span>
+                  </div>
+                )}
 
                 {/* Sandbox Moves History */}
                 {sandboxMoves.length > 0 && (

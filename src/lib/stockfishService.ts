@@ -92,7 +92,7 @@ export class StockfishService {
       version: '16.0.0',
       runtime: 'WebAssembly (Web Worker)',
       defaultDepth: 16,
-      defaultMultiPv: 3,
+      defaultMultiPv: 2,
     };
   }
 
@@ -285,8 +285,8 @@ export class StockfishService {
         resolve(result);
       };
 
-      // Adaptive timeout: ensures deep searches don't freeze indefinitely, but gives ample time (min 8s, up to depth * 1.5s)
-      const timeoutMs = Math.max(8000, depth * 1500);
+      // Adaptive timeout: depth * 600ms per ply, minimum 4s
+      const timeoutMs = Math.max(4000, depth * 600);
       const timeoutId = setTimeout(() => {
         if (requestId === client.activeRequestId) {
           client.worker?.postMessage('stop');
@@ -528,8 +528,8 @@ export class StockfishService {
     const client = this.analysisClient;
     const results: EngineEvaluation[] = [];
     const total = fens.length;
-    const targetDepth = options.depth || 16;
-    const targetMultiPv = options.multiPv || 3;
+    const targetDepth = options.depth || 14;
+    const targetMultiPv = options.multiPv || 2;
 
     if (client.worker) {
       client.worker.postMessage('ucinewgame');

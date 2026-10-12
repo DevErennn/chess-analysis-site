@@ -16,19 +16,29 @@ import { isBookMove } from './openingExplorer';
  * Centralized thresholds for move classification and accuracy calculation.
  */
 export const CLASSIFICATION_THRESHOLDS = {
+  // Win probability loss thresholds (matching chess.com)
   EXCELLENT_MAX_LOSS: 2.0,   // Loss <= 2.0% -> Mükemmel (Excellent)
   GOOD_MAX_LOSS: 5.0,        // Loss <= 5.0% -> İyi (Good)
-  INACCURACY_MAX_LOSS: 10.0, // Loss 5.0% - 10.0% -> Yanılgı (Inaccuracy)
+  INACCURACY_MAX_LOSS: 10.0, // Loss 5.0% - 10.0% -> Şüpheli (Inaccuracy)
   MISTAKE_MAX_LOSS: 20.0,    // Loss 10.0% - 20.0% -> Hata (Mistake)
-  // Loss > 20.0% -> Gaf (Blunder)
+  // Loss > 20.0% -> Büyük Hata (Blunder)
 
-  // MultiPV gap thresholds
-  GREAT_MIN_GAP_CP: 80,      // Line 1 is at least 80cp better than Line 2
-  BRILLIANT_MIN_GAP_CP: 100, // Line 1 is at least 100cp better than Line 2
-  BRILLIANT_MAX_LOSS: 2.0,
-  BRILLIANT_MAX_WIN_BEFORE: 92.0,
-  BRILLIANT_MIN_WIN_AFTER: 40.0,
-  BRILLIANT_MIN_MATERIAL_SACRIFICE: 2,
+  // MultiPV gap thresholds (centipawns)
+  GREAT_MIN_GAP_CP: 150,     // Line 1 is at least 150cp better than Line 2 -> Great (!)
+  BRILLIANT_MIN_GAP_CP: 150, // Line 1 is at least 150cp better than Line 2 -> Brilliant (!!)
+
+  // Brilliant move conditions
+  BRILLIANT_MAX_LOSS: 2.0,           // Brilliant must be near-best (<=2% loss)
+  BRILLIANT_MAX_WIN_BEFORE: 90.0,    // Position must not be trivially won before
+  BRILLIANT_MIN_WIN_AFTER: 50.0,     // Must maintain at least equal standing after
+  BRILLIANT_MIN_MATERIAL_SACRIFICE: 2, // Must sacrifice at least 2 pawn units
+
+  // Book move tolerance
+  BOOK_MAX_LOSS: 5.0,        // Book moves with <= 5% loss are classified as book
+
+  // Great move conditions  
+  GREAT_TURN_AROUND_BEFORE: 45.0,    // winBefore < 45% (was losing/equal)
+  GREAT_TURN_AROUND_AFTER: 55.0,     // winAfter >= 55% (now winning)
 };
 
 /**
@@ -259,13 +269,27 @@ export function classifyMove(
   const winBefore = evaluationToWinProbability(evalBefore, color);
   const winAfter = evaluationToWinProbability(evalAfter, color);
 
-  // Check if played move matches engine's top recommendation
+  // ---------------------------------------------------------------
+  // isBestMove detection: robust multi-strategy matching
+  // ---------------------------------------------------------------
   const playedUci = `${from}${to}`.toLowerCase();
   const engineBestUci = (evalBefore.bestMoveUci || '').toLowerCase();
-  const isBestMove = playedUci === engineBestUci.slice(0, 4) ||
-    (evalBefore.bestMoveSan !== undefined && evalBefore.bestMoveSan === moveSan);
 
-  // Core Rule: If the player played the engine's best move, loss is STRICTLY 0
+  // Strategy 1: UCI from/to square match (4 chars)
+  const uciMatch = engineBestUci.length >= 4 && playedUci === engineBestUci.slice(0, 4);
+
+  // Strategy 2: SAN match with bestMoveSan
+  const sanMatch = !!(evalBefore.bestMoveSan && evalBefore.bestMoveSan === moveSan);
+
+  // Strategy 3: Check if played move is line 1 in MultiPV
+  const line1Uci = (evalBefore.lines?.[0]?.bestMoveUci || '').toLowerCase();
+  const multiPvMatch = line1Uci.length >= 4 && playedUci === line1Uci.slice(0, 4);
+
+  const isBestMove = uciMatch || sanMatch || multiPvMatch;
+
+  // ---------------------------------------------------------------
+  // Win loss: 0 if best move, otherwise max(0, before - after)
+  // ---------------------------------------------------------------
   let winLoss = isBestMove ? 0 : Math.max(0, winBefore - winAfter);
   const cpl = calculateCpl(evalBefore, evalAfter, color, isBestMove);
 
@@ -275,8 +299,10 @@ export function classifyMove(
   let classification: MoveClassification = 'good';
   let comment = '';
 
-  // 1. Opening Book Moves Check
-  if (isBook && winLoss <= 3.0) {
+  // ---------------------------------------------------------------
+  // 1. Opening Book Moves
+  // ---------------------------------------------------------------
+  if (isBook && winLoss <= CLASSIFICATION_THRESHOLDS.BOOK_MAX_LOSS) {
     return {
       classification: 'book',
       winChanceBefore: winBefore,
@@ -289,16 +315,16 @@ export function classifyMove(
     };
   }
 
-  // 2. Brilliant Move (!!) Check
-  // Requirements:
-  // - Best move (or <= 2% loss)
-  // - Position was not already trivial winning
-  // - Player remains strong after the move
-  // - Genuine material sacrifice verified via PV rollout
-  // - MultiPV confirms this is a standout idea (alternatives are clearly inferior or gap >= 80cp)
-  if ((isBestMove || winLoss <= CLASSIFICATION_THRESHOLDS.BRILLIANT_MAX_LOSS) &&
-      winBefore < CLASSIFICATION_THRESHOLDS.BRILLIANT_MAX_WIN_BEFORE &&
-      winAfter >= CLASSIFICATION_THRESHOLDS.BRILLIANT_MIN_WIN_AFTER) {
+  // ---------------------------------------------------------------
+  // 2. Brilliant Move (!!) — must be best move with genuine material sacrifice
+  //    in a non-trivial, competitive position
+  // ---------------------------------------------------------------
+  if (
+    isBestMove &&
+    winLoss <= CLASSIFICATION_THRESHOLDS.BRILLIANT_MAX_LOSS &&
+    winBefore < CLASSIFICATION_THRESHOLDS.BRILLIANT_MAX_WIN_BEFORE &&
+    winAfter >= CLASSIFICATION_THRESHOLDS.BRILLIANT_MIN_WIN_AFTER
+  ) {
     const sac = verifyMaterialSacrifice(fenBefore, from, to, evalBefore.pv);
     if (sac.isSacrifice) {
       classification = 'brilliant';
@@ -316,13 +342,17 @@ export function classifyMove(
     }
   }
 
-  // 3. Great Move (!) Check
-  // Game-turning or standout move where:
-  // - Best move was played
-  // - Position was turned around (deficit -> lead) OR only-move tactical save (MultiPV gap >= 80cp)
+  // ---------------------------------------------------------------
+  // 3. Great Move (!) — best move that dramatically turns the game
+  //    OR the only move that maintains a big advantage (gap >= 150cp)
+  // ---------------------------------------------------------------
   if (isBestMove) {
-    const turnedPosition = winBefore < 48.0 && winAfter >= 50.0;
-    const onlyWinningMove = multiPvGap >= CLASSIFICATION_THRESHOLDS.GREAT_MIN_GAP_CP && winAfter >= 55.0;
+    const turnedPosition =
+      winBefore < CLASSIFICATION_THRESHOLDS.GREAT_TURN_AROUND_BEFORE &&
+      winAfter >= CLASSIFICATION_THRESHOLDS.GREAT_TURN_AROUND_AFTER;
+    const onlyWinningMove =
+      multiPvGap >= CLASSIFICATION_THRESHOLDS.GREAT_MIN_GAP_CP &&
+      winAfter >= 60.0;
 
     if (turnedPosition || onlyWinningMove) {
       classification = 'great';
@@ -342,7 +372,9 @@ export function classifyMove(
     }
   }
 
+  // ---------------------------------------------------------------
   // 4. Best Move (⭐)
+  // ---------------------------------------------------------------
   if (isBestMove) {
     classification = 'best';
     comment = 'Motorun önerdiği en güçlü hamle.';
@@ -358,10 +390,16 @@ export function classifyMove(
     };
   }
 
-  // 5. Categorization when NOT best move
-  // Check for critical game-state collapses (winning -> losing or throwing forced mate)
+  // ---------------------------------------------------------------
+  // 5. Classify non-best moves by win probability loss
+  // ---------------------------------------------------------------
+
+  // Critical collapses: forced-mate thrown away, or big lead evaporated
   const mateBefore = evalBefore.score?.type === 'mate' ? evalBefore.score.mateIn : evalBefore.mate;
-  const isWinningMateBefore = mateBefore !== null && mateBefore !== undefined && (color === 'w' ? mateBefore > 0 : mateBefore < 0);
+  const isWinningMateBefore =
+    mateBefore !== null &&
+    mateBefore !== undefined &&
+    (color === 'w' ? mateBefore > 0 : mateBefore < 0);
   const threwAwayMate = isWinningMateBefore && winAfter < 80.0;
   const leadCollapsing = winBefore >= 70.0 && winAfter <= 35.0;
 
@@ -466,10 +504,11 @@ export function countClassifications(moves: MoveAnalysis[]): {
     best: 0,
     excellent: 0,
     good: 0,
+    book: 0,
     inaccuracy: 0,
     mistake: 0,
+    miss: 0,
     blunder: 0,
-    book: 0,
   });
 
   const counts = {

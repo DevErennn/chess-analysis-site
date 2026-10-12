@@ -12,16 +12,18 @@ export const CLASSIFICATION_CONFIG: Record<
     borderColor: string;
     textColor: string;
     icon: React.ComponentType<{ className?: string }>;
+    image: string;
   }
 > = {
   brilliant: {
-    label: 'Brilliant (Göz Alıcı)',
+    label: 'Brilliant',
     symbol: '!!',
     color: '#26c2a3',
     bgColor: 'bg-teal-500/20',
     borderColor: 'border-teal-400/40',
     textColor: 'text-teal-400',
     icon: Sparkles,
+    image: '/brilliant.png',
   },
   great: {
     label: 'Harika',
@@ -31,6 +33,7 @@ export const CLASSIFICATION_CONFIG: Record<
     borderColor: 'border-sky-400/40',
     textColor: 'text-sky-400',
     icon: Star,
+    image: '/great.png',
   },
   best: {
     label: 'En İyi',
@@ -40,6 +43,7 @@ export const CLASSIFICATION_CONFIG: Record<
     borderColor: 'border-emerald-400/40',
     textColor: 'text-emerald-400',
     icon: Star,
+    image: '/best.png',
   },
   excellent: {
     label: 'Mükemmel',
@@ -49,6 +53,7 @@ export const CLASSIFICATION_CONFIG: Record<
     borderColor: 'border-lime-400/40',
     textColor: 'text-lime-400',
     icon: CheckCircle,
+    image: '/excellent.png',
   },
   good: {
     label: 'İyi',
@@ -58,33 +63,7 @@ export const CLASSIFICATION_CONFIG: Record<
     borderColor: 'border-stone-400/40',
     textColor: 'text-stone-300',
     icon: ThumbsUp,
-  },
-  inaccuracy: {
-    label: 'Şüpheli',
-    symbol: '?!',
-    color: '#f0c15c',
-    bgColor: 'bg-amber-500/20',
-    borderColor: 'border-amber-400/40',
-    textColor: 'text-amber-400',
-    icon: AlertTriangle,
-  },
-  mistake: {
-    label: 'Hata',
-    symbol: '?',
-    color: '#e6912c',
-    bgColor: 'bg-orange-500/20',
-    borderColor: 'border-orange-400/40',
-    textColor: 'text-orange-400',
-    icon: AlertCircle,
-  },
-  blunder: {
-    label: 'Büyük Hata',
-    symbol: '??',
-    color: '#fa412d',
-    bgColor: 'bg-red-500/20',
-    borderColor: 'border-red-400/50',
-    textColor: 'text-red-400',
-    icon: XCircle,
+    image: '/good.png',
   },
   book: {
     label: 'Kitap',
@@ -94,5 +73,46 @@ export const CLASSIFICATION_CONFIG: Record<
     borderColor: 'border-amber-700/40',
     textColor: 'text-amber-300',
     icon: BookOpen,
+    image: '/book.png',
+  },
+  inaccuracy: {
+    label: 'Şüpheli',
+    symbol: '?!',
+    color: '#f0c15c',
+    bgColor: 'bg-amber-500/20',
+    borderColor: 'border-amber-400/40',
+    textColor: 'text-amber-400',
+    icon: AlertTriangle,
+    image: '/inaccuracy.png',
+  },
+  mistake: {
+    label: 'Hata',
+    symbol: '?',
+    color: '#e6912c',
+    bgColor: 'bg-orange-500/20',
+    borderColor: 'border-orange-400/40',
+    textColor: 'text-orange-400',
+    icon: AlertCircle,
+    image: '/mistake.png',
+  },
+  miss: {
+    label: 'Kaçırma',
+    symbol: '❌',
+    color: '#ee5656',
+    bgColor: 'bg-red-500/20',
+    borderColor: 'border-red-400/40',
+    textColor: 'text-red-400',
+    icon: XCircle,
+    image: '/miss.png',
+  },
+  blunder: {
+    label: 'Büyük Hata',
+    symbol: '??',
+    color: '#fa412d',
+    bgColor: 'bg-red-500/20',
+    borderColor: 'border-red-400/50',
+    textColor: 'text-red-400',
+    icon: XCircle,
+    image: '/blunder.png',
   },
 };

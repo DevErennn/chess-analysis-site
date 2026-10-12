@@ -18,28 +18,44 @@ export const ClassificationBadge: React.FC<ClassificationBadgeProps> = ({
   if (!classification || !CLASSIFICATION_CONFIG[classification]) return null;
 
   const config = CLASSIFICATION_CONFIG[classification];
-  const Icon = config.icon;
 
-  const sizeClasses = {
-    sm: 'px-1.5 py-0.5 text-[10px] gap-1',
-    md: 'px-2 py-0.5 text-xs gap-1.5',
-    lg: 'px-3 py-1 text-sm gap-2',
+  const px = {
+    sm: 15,
+    md: 18,
+    lg: 22,
   }[size];
 
-  const iconSizes = {
-    sm: 'w-3 h-3',
-    md: 'w-3.5 h-3.5',
-    lg: 'w-4 h-4',
+  if (!showText) {
+    return (
+      <img
+        src={config.image}
+        alt={config.label}
+        title={`${config.label} (${config.symbol})`}
+        style={{ width: `${px}px`, height: `${px}px` }}
+        className={`object-contain inline-block shrink-0 drop-shadow-sm select-none ${className}`}
+      />
+    );
+  }
+
+  const sizeClasses = {
+    sm: 'px-1.5 py-0.5 text-[10px] gap-1.5',
+    md: 'px-2 py-0.5 text-xs gap-1.5',
+    lg: 'px-2.5 py-1 text-xs gap-2',
   }[size];
 
   return (
     <span
-      className={`inline-flex items-center font-bold rounded-md border ${config.bgColor} ${config.borderColor} ${config.textColor} ${sizeClasses} ${className}`}
-      title={config.label}
+      className={`inline-flex items-center font-bold rounded-lg border ${config.bgColor} ${config.borderColor} ${config.textColor} ${sizeClasses} ${className}`}
+      title={`${config.label} (${config.symbol})`}
     >
-      <Icon className={iconSizes} />
-      <span className="font-mono">{config.symbol}</span>
-      {showText && <span>{config.label}</span>}
+      <img
+        src={config.image}
+        alt={config.label}
+        style={{ width: `${px}px`, height: `${px}px` }}
+        className="object-contain shrink-0 drop-shadow-sm select-none"
+      />
+      <span>{config.label}</span>
+      <span className="font-mono text-[10px] opacity-75">({config.symbol})</span>
     </span>
   );
 };

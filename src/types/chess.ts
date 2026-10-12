@@ -6,10 +6,11 @@ export type MoveClassification =
   | 'best'        // ⭐
   | 'excellent'   // ✅
   | 'good'        // 👍
+  | 'book'        // 📖
   | 'inaccuracy'  // ?!
   | 'mistake'     // ?
-  | 'blunder'     // ??
-  | 'book';       // 📖
+  | 'miss'        // ❌
+  | 'blunder';    // ??
 
 export type EngineScore =
   | { type: 'cp'; cp: number }
@@ -111,10 +112,11 @@ export interface ClassificationCount {
   best: number;
   excellent: number;
   good: number;
+  book: number;
   inaccuracy: number;
   mistake: number;
+  miss: number;
   blunder: number;
-  book: number;
 }
 
 export interface GameAccuracy {
