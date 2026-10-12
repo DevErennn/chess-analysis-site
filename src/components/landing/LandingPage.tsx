@@ -21,34 +21,39 @@ import type { GameMetadata } from '../../types/chess';
 interface LandingPageProps {
   onSelectGame: (pgn: string, metadata: GameMetadata) => void;
   onOpenFeedback?: () => void;
+  onOpenAdminFeedbacks?: () => void;
 }
 
-export const LandingPage: React.FC<LandingPageProps> = ({ onSelectGame, onOpenFeedback }) => {
+export const LandingPage: React.FC<LandingPageProps> = ({ 
+  onSelectGame, 
+  onOpenFeedback,
+  onOpenAdminFeedbacks 
+}) => {
   const [activeTab, setActiveTab] = useState<'pgn' | 'chesscom' | 'lichess'>('pgn');
 
   return (
-    <div className="min-h-screen flex flex-col justify-between">
+    <div className="min-h-screen flex flex-col justify-between overflow-x-hidden">
       {/* Navigation / Header */}
       <header className="border-b border-chess-border/70 bg-chess-dark/80 backdrop-blur-md sticky top-0 z-30">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
+        <div className="max-w-6xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
             <img 
               src="/mini-logo.png" 
               alt="Chess Review" 
-              className="w-9 h-9 rounded-xl shadow-md border border-chess-border/60 object-contain bg-chess-surface"
+              className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl shadow-md border border-chess-border/60 object-contain bg-chess-surface shrink-0"
             />
-            <div>
-              <span className="font-extrabold text-lg tracking-tight text-white flex items-center gap-1.5">
+            <div className="min-w-0">
+              <span className="font-extrabold text-base sm:text-lg tracking-tight text-white flex items-center gap-1.5">
                 Chess<span className="text-chess-accent">Review</span>
-                <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-chess-surface border border-chess-border text-chess-accent">
+                <span className="hidden sm:inline-block text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-chess-surface border border-chess-border text-chess-accent">
                   Açık Kaynak
                 </span>
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 sm:gap-3 text-xs">
-            <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-chess-surface border border-chess-border text-gray-300">
+          <div className="flex items-center gap-1.5 sm:gap-3 text-xs shrink-0">
+            <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-chess-surface border border-chess-border text-gray-300">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               <span>Stockfish Hazırlığı: v16 WASM</span>
             </div>
@@ -57,7 +62,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onSelectGame, onOpenFe
               <button
                 type="button"
                 onClick={onOpenFeedback}
-                className="px-3 py-1.5 rounded-lg bg-chess-surface hover:bg-chess-card border border-chess-border text-chess-accent hover:text-white transition-colors flex items-center gap-1.5 font-medium cursor-pointer"
+                className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-chess-surface hover:bg-chess-card border border-chess-border text-chess-accent hover:text-white transition-colors flex items-center gap-1.5 font-medium cursor-pointer text-xs"
                 title="Görüş ve Önerileriniz"
               >
                 <MessageSquareHeart className="w-3.5 h-3.5" />
@@ -69,10 +74,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onSelectGame, onOpenFe
               href="https://github.com/DevErennn/chess-analysis-site"
               target="_blank"
               rel="noreferrer"
-              className="px-3 py-1.5 rounded-lg bg-chess-surface hover:bg-chess-card border border-chess-border text-gray-300 hover:text-white transition-colors flex items-center gap-1.5 font-medium"
+              className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-chess-surface hover:bg-chess-card border border-chess-border text-gray-300 hover:text-white transition-colors flex items-center gap-1.5 font-medium text-xs"
             >
               <GithubIcon className="w-3.5 h-3.5 text-gray-400" />
-              <span>GitHub</span>
+              <span className="hidden sm:inline">GitHub</span>
             </a>
           </div>
         </div>
@@ -215,7 +220,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onSelectGame, onOpenFe
 
       {/* Geliştiriciler & Footer */}
       <footer className="bg-chess-dark pb-8">
-        <DevelopersSection onOpenFeedback={onOpenFeedback} />
+        <DevelopersSection 
+          onOpenFeedback={onOpenFeedback} 
+          onOpenAdminFeedbacks={onOpenAdminFeedbacks} 
+        />
       </footer>
     </div>
   );

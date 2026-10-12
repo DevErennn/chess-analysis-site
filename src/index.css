@@ -32,3 +32,39 @@
 .mono-font {
   font-family: 'JetBrains Mono', monospace;
 }
+
+/* Devrilen Beyaz Şah Animasyonu */
+@keyframes toppleKing {
+  0% {
+    transform: rotate(0deg) translateY(0);
+  }
+  18% {
+    transform: rotate(0deg) translateY(0);
+  }
+  30% {
+    transform: rotate(-8deg) translateY(-3px);
+  }
+  45% {
+    transform: rotate(22deg) translateY(1px);
+  }
+  62% {
+    transform: rotate(65deg) translateY(7px);
+  }
+  74% {
+    transform: rotate(85deg) translateY(13px);
+  }
+  82% {
+    transform: rotate(78deg) translateY(11px);
+  }
+  90% {
+    transform: rotate(83deg) translateY(13px);
+  }
+  100% {
+    transform: rotate(82deg) translateY(13px);
+  }
+}
+
+.animate-topple-king {
+  animation: toppleKing 1.8s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+  transform-origin: 82% 96%;
+}

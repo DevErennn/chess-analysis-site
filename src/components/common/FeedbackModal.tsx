@@ -53,27 +53,27 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
       <div 
-        className="relative w-full max-w-lg bg-chess-card border border-chess-border rounded-2xl shadow-2xl overflow-hidden transition-all text-gray-100"
+        className="relative w-full max-w-lg bg-chess-card border border-chess-border rounded-2xl shadow-2xl overflow-hidden max-h-[92vh] flex flex-col text-gray-100"
         role="dialog"
         aria-modal="true"
         aria-labelledby="feedback-title"
       >
         {/* Top gradient highlight banner */}
-        <div className="h-1.5 w-full bg-gradient-to-r from-chess-accent via-emerald-400 to-cyan-400" />
+        <div className="h-1.5 w-full bg-gradient-to-r from-chess-accent via-emerald-400 to-cyan-400 shrink-0" />
 
         {/* Close Button */}
         <button
           type="button"
           onClick={handleClose}
-          className="absolute top-4 right-4 p-2 rounded-xl text-gray-400 hover:text-white hover:bg-chess-surface border border-transparent hover:border-chess-border transition-colors cursor-pointer"
+          className="absolute top-3.5 right-3.5 sm:top-4 sm:right-4 p-2 rounded-xl text-gray-400 hover:text-white hover:bg-chess-surface border border-transparent hover:border-chess-border transition-colors cursor-pointer z-10"
           aria-label="Kapat"
         >
           <X className="w-5 h-5" />
         </button>
 
-        <div className="p-6 sm:p-7">
+        <div className="p-5 sm:p-7 overflow-y-auto flex-1">
           {!submitted ? (
             <>
               {/* Modal Header */}

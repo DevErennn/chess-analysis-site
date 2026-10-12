@@ -1,12 +1,16 @@
 import React from 'react';
-import { Code2, Sparkles, MessageSquareHeart, Heart } from 'lucide-react';
+import { Code2, Sparkles, MessageSquareHeart, Heart, Database } from 'lucide-react';
 import { GithubIcon } from './GithubIcon';
 
 interface DevelopersSectionProps {
   onOpenFeedback?: () => void;
+  onOpenAdminFeedbacks?: () => void;
 }
 
-export const DevelopersSection: React.FC<DevelopersSectionProps> = ({ onOpenFeedback }) => {
+export const DevelopersSection: React.FC<DevelopersSectionProps> = ({ 
+  onOpenFeedback,
+  onOpenAdminFeedbacks 
+}) => {
   return (
     <section className="w-full mt-16 pt-10 border-t border-chess-border/60">
       <div className="max-w-5xl mx-auto px-4 sm:px-6">
@@ -125,6 +129,18 @@ export const DevelopersSection: React.FC<DevelopersSectionProps> = ({ onOpenFeed
             <GithubIcon className="w-4 h-4 text-gray-300" />
             <span>GitHub Proje Deposu</span>
           </a>
+
+          {onOpenAdminFeedbacks && (
+            <button
+              type="button"
+              onClick={onOpenAdminFeedbacks}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-chess-card hover:bg-chess-cardHover border border-chess-border text-gray-300 hover:text-white transition-colors cursor-pointer"
+              title="Kullanıcılardan gelen görüş ve önerileri inceleyin"
+            >
+              <Database className="w-4 h-4 text-emerald-400" />
+              <span>Gelen Görüşleri İncele</span>
+            </button>
+          )}
         </div>
 
         {/* Bottom copyright notice */}
