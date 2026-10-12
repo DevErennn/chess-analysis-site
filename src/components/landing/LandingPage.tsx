@@ -101,9 +101,20 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8 sm:py-12 flex-1 w-full">
         {/* Hero Section */}
         <section className="text-center mb-10 sm:mb-12">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-chess-accent/10 border border-chess-accent/30 text-chess-accent text-xs font-semibold mb-5 shadow-sm">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Tamamen Ücretsiz • Sınırsız Oyun Analizi</span>
+          <div className="flex flex-wrap items-center justify-center gap-2.5 mb-5">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-chess-accent/10 border border-chess-accent/30 text-chess-accent text-xs font-semibold shadow-sm">
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Tamamen Ücretsiz • Sınırsız Oyun Analizi</span>
+            </div>
+
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-red-500/15 border border-red-500/35 text-red-100 text-xs font-bold shadow-sm">
+              <img 
+                src="/turkish.png" 
+                alt="Türk Bayrağı" 
+                className="w-4 h-4 object-contain rounded-full shadow-sm" 
+              />
+              <span>%100 Türk Geliştiriciler Tarafından Geliştirildi</span>
+            </div>
           </div>
 
           <h1 className="text-3xl sm:text-5xl font-black text-white tracking-tight mb-4 leading-tight sm:leading-snug">

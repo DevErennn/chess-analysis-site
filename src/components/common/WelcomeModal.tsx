@@ -69,11 +69,16 @@ export const WelcomeModal: React.FC<WelcomeModalProps> = ({
 
         {/* Modal Content */}
         <div className="p-5 sm:p-7 overflow-y-auto flex-1 space-y-5">
-          {/* Header */}
-          <div className="pr-16 sm:pr-20 space-y-1.5">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-chess-accent/15 border border-chess-accent/30 text-chess-accent text-xs font-bold tracking-wide">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Chess Review'e Hoş Geldiniz!</span>
+          <div className="pr-16 sm:pr-20 space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-chess-accent/15 border border-chess-accent/30 text-chess-accent text-xs font-bold tracking-wide">
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Chess Review'e Hoş Geldiniz!</span>
+              </div>
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-500/15 border border-red-500/35 text-red-200 text-[11px] font-bold">
+                <img src="/turkish.png" alt="Türk Bayrağı" className="w-3.5 h-3.5 object-contain rounded-full shadow-sm" />
+                <span>%100 Türk Geliştiriciler Tarafından Geliştirildi</span>
+              </div>
             </div>
             <h2 id="welcome-modal-title" className="text-xl sm:text-2xl font-black text-white tracking-tight leading-snug">
               Görüşleriniz bizim için değerli, bize destek olmak ister misiniz?

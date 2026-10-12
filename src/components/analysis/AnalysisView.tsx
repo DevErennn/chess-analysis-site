@@ -1054,8 +1054,12 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
           <span>Klavye: <kbd className="px-1.5 py-0.5 rounded bg-chess-card border border-chess-border text-gray-300">←</kbd> <kbd className="px-1.5 py-0.5 rounded bg-chess-card border border-chess-border text-gray-300">→</kbd>, <kbd className="px-1.5 py-0.5 rounded bg-chess-card border border-chess-border text-gray-300">Boşluk</kbd> Oynat, <kbd className="px-1.5 py-0.5 rounded bg-chess-card border border-chess-border text-gray-300">F</kbd> Çevir</span>
         </div>
         
-        <div className="flex items-center gap-4 text-[11px]">
-          <span>Geliştiriciler: <a href="https://github.com/DevErennn/chess-analysis-site" target="_blank" rel="noreferrer" className="text-gray-400 hover:text-white underline">DevErennn & DevOnurrr</a></span>
+        <div className="flex items-center gap-3 text-[11px] flex-wrap justify-center">
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-red-500/15 border border-red-500/35 text-red-200 font-semibold shadow-sm">
+            <img src="/turkish.png" alt="Türk Bayrağı" className="w-3.5 h-3.5 object-contain rounded-full shadow-sm" />
+            <span>%100 Türk Geliştiriciler Tarafından Geliştirildi</span>
+          </div>
+          <span>Geliştiriciler: <a href="https://github.com/DevErennn/chess-analysis-site" target="_blank" rel="noreferrer" className="text-gray-400 hover:text-white underline font-medium">DevErennn & DevOnurrr</a></span>
           {onOpenFeedback && (
             <button
               type="button"

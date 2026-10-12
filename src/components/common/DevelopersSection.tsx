@@ -16,10 +16,22 @@ export const DevelopersSection: React.FC<DevelopersSectionProps> = ({
       <div className="max-w-5xl mx-auto px-4 sm:px-6">
         {/* Section Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-chess-accent/10 border border-chess-accent/30 text-chess-accent text-xs font-semibold mb-2.5">
-            <Code2 className="w-3.5 h-3.5" />
-            <span>Açık Kaynak & Bağımsız Geliştirme</span>
+          <div className="flex flex-wrap items-center justify-center gap-2 mb-3">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-chess-accent/10 border border-chess-accent/30 text-chess-accent text-xs font-semibold">
+              <Code2 className="w-3.5 h-3.5" />
+              <span>Açık Kaynak & Bağımsız Geliştirme</span>
+            </div>
+
+            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-red-500/15 border border-red-500/35 text-red-100 text-xs font-bold shadow-sm">
+              <img 
+                src="/turkish.png" 
+                alt="Türk Bayrağı" 
+                className="w-4 h-4 object-contain rounded-full shadow-sm" 
+              />
+              <span>%100 Türk Geliştiriciler Tarafından Geliştirildi</span>
+            </div>
           </div>
+
           <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
             Geliştiriciler
           </h2>
