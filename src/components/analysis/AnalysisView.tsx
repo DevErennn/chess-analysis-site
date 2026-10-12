@@ -1042,7 +1042,7 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
       <MoveShareModal
         isOpen={isMoveShareModalOpen}
         onClose={() => setIsMoveShareModalOpen(false)}
-        fen={isSandboxMode ? sandboxFen : currentFen}
+        fen={isSandboxMode ? (sandboxFen || currentFen) : (currentFen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1')}
         activeMove={(isSandboxMode ? sandboxActiveMove : activeMove) ?? null}
         metadata={metadata}
         orientation={orientation}

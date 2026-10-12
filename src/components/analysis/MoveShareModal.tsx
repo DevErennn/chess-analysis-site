@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   X,
   Download,
@@ -8,7 +8,9 @@ import {
   Flame,
   Smartphone,
   Square,
-  MessageCircle
+  MessageCircle,
+  Sparkles,
+  Layers
 } from 'lucide-react';
 import type { GameMetadata, MoveAnalysis } from '../../types/chess';
 import { CLASSIFICATION_CONFIG } from './constants';
@@ -18,11 +20,11 @@ interface MoveShareModalProps {
   onClose: () => void;
   fen: string;
   activeMove: MoveAnalysis | null;
-  metadata: GameMetadata;
+  metadata?: GameMetadata | null;
   orientation?: 'white' | 'black';
 }
 
-// Unicode chess pieces mapping
+// Unicode chess piece glyphs
 const PIECE_SYMBOLS: Record<string, string> = {
   P: '♙', N: '♘', B: '♗', R: '♖', Q: '♕', K: '♔',
   p: '♟', n: '♞', b: '♝', r: '♜', q: '♛', k: '♚',
@@ -38,15 +40,23 @@ export const MoveShareModal: React.FC<MoveShareModalProps> = ({
 }) => {
   const [aspectRatio, setAspectRatio] = useState<'1:1' | '9:16'>('1:1');
   const [copiedText, setCopiedText] = useState(false);
+  const [copiedImage, setCopiedImage] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadSuccess, setDownloadSuccess] = useState(false);
+  const [previewDataUrl, setPreviewDataUrl] = useState<string>('');
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  if (!isOpen) return null;
+  // Safe names and details
+  const whiteName = metadata?.white?.name || 'Beyaz Oyuncu';
+  const blackName = metadata?.black?.name || 'Siyah Oyuncu';
+  const whiteRating = metadata?.white?.rating ? `(${metadata.white.rating})` : '';
+  const blackRating = metadata?.black?.rating ? `(${metadata.black.rating})` : '';
+  const matchResult = metadata?.result || '*';
 
+  // Move details
   const moveSan = activeMove?.san || 'Hamle';
   const moveNumber = activeMove?.moveNumber ? `${activeMove.moveNumber}.${activeMove.color === 'b' ? '..' : ''} ` : '';
-  const moveFullText = `${moveNumber}${moveSan}`;
+  const moveFullText = activeMove ? `${moveNumber}${moveSan}` : 'Mevcut Pozisyon';
   const classification = activeMove?.classification || 'best';
   const classConfig = CLASSIFICATION_CONFIG[classification] || CLASSIFICATION_CONFIG.best;
 
@@ -61,92 +71,102 @@ export const MoveShareModal: React.FC<MoveShareModalProps> = ({
     return `${cp >= 0 ? '+' : ''}${scoreVal} Değerlendirme`;
   }, [activeMove]);
 
-  // Social share text for WhatsApp/Instagram
-  const shareText = `🔥 Hey, satrançta yaptığım şu hamleye bak!\n\n♟️ Hamle: ${moveFullText} (${classConfig.label} ${classConfig.symbol})\n📊 Değerlendirme: ${evalScoreText}\n⚪ ${metadata.white.name} vs ⚫ ${metadata.black.name}\n\nSen de maçlarını ücretsiz analiz et: https://github.com/DevErennn/chess-analysis-site`;
+  // Social share text
+  const shareText = useMemo(() => {
+    return `🔥 Hey, satrançta yaptığım şu hamleye bak!\n\n♟️ Hamle: ${moveFullText} (${classConfig.label} ${classConfig.symbol})\n📊 Değerlendirme: ${evalScoreText}\n⚪ ${whiteName} vs ⚫ ${blackName}\n\nSen de maçlarını ücretsiz analiz et: https://github.com/DevErennn/chess-analysis-site`;
+  }, [moveFullText, classConfig, evalScoreText, whiteName, blackName]);
 
-  // Draw card on hidden or preview canvas
-  const drawCanvas = (ratio: '1:1' | '9:16') => {
-    const canvas = canvasRef.current || document.createElement('canvas');
+  // Draw card on canvas
+  const drawCard = useCallback((ratio: '1:1' | '9:16'): HTMLCanvasElement => {
     const width = ratio === '1:1' ? 1200 : 1080;
     const height = ratio === '1:1' ? 1200 : 1920;
+
+    const canvas = document.createElement('canvas');
     canvas.width = width;
     canvas.height = height;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return canvas;
 
-    // 1. Dark radial gradient background
+    // 1. Background gradient
     const bgGrad = ctx.createLinearGradient(0, 0, width, height);
-    bgGrad.addColorStop(0, '#12110e');
-    bgGrad.addColorStop(0.5, '#1a1916');
-    bgGrad.addColorStop(1, '#0e0d0b');
+    bgGrad.addColorStop(0, '#100f0d');
+    bgGrad.addColorStop(0.4, '#181714');
+    bgGrad.addColorStop(1, '#0c0b09');
     ctx.fillStyle = bgGrad;
     ctx.fillRect(0, 0, width, height);
 
     // Neon ambient glows
-    const glow1 = ctx.createRadialGradient(width / 2, ratio === '1:1' ? 200 : 350, 10, width / 2, ratio === '1:1' ? 200 : 350, 600);
-    glow1.addColorStop(0, 'rgba(129, 182, 76, 0.22)');
+    const glow1 = ctx.createRadialGradient(width / 2, ratio === '1:1' ? 220 : 380, 20, width / 2, ratio === '1:1' ? 220 : 380, 550);
+    glow1.addColorStop(0, 'rgba(239, 68, 68, 0.20)');
     glow1.addColorStop(1, 'rgba(0, 0, 0, 0)');
     ctx.fillStyle = glow1;
     ctx.fillRect(0, 0, width, height);
 
-    const glow2 = ctx.createRadialGradient(width / 2, height - 200, 10, width / 2, height - 200, 500);
-    glow2.addColorStop(0, 'rgba(38, 194, 163, 0.15)');
+    const glow2 = ctx.createRadialGradient(width / 2, height - 250, 20, width / 2, height - 250, 500);
+    glow2.addColorStop(0, 'rgba(129, 182, 76, 0.16)');
     glow2.addColorStop(1, 'rgba(0, 0, 0, 0)');
     ctx.fillStyle = glow2;
     ctx.fillRect(0, 0, width, height);
 
-    // Border line frame
-    ctx.strokeStyle = '#363431';
-    ctx.lineWidth = 6;
-    ctx.strokeRect(30, 30, width - 60, height - 60);
+    // Outer subtle border
+    ctx.strokeStyle = '#2d2b27';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(24, 24, width - 48, height - 48);
 
     // 2. Top Banner Header
-    const topY = ratio === '1:1' ? 100 : 180;
+    const topY = ratio === '1:1' ? 95 : 180;
     ctx.textAlign = 'center';
 
-    // Glowing badge
-    ctx.fillStyle = 'rgba(239, 68, 68, 0.18)';
-    ctx.fillRect(width / 2 - 250, topY - 45, 500, 48);
-    ctx.strokeStyle = 'rgba(239, 68, 68, 0.5)';
+    // Glowing badge pill
+    const badgeW = 540;
+    const badgeH = 50;
+    const badgeX = (width - badgeW) / 2;
+    const badgeY = topY - 45;
+
+    ctx.fillStyle = 'rgba(239, 68, 68, 0.15)';
+    ctx.fillRect(badgeX, badgeY, badgeW, badgeH);
+    ctx.strokeStyle = 'rgba(239, 68, 68, 0.55)';
     ctx.lineWidth = 2;
-    ctx.strokeRect(width / 2 - 250, topY - 45, 500, 48);
+    ctx.strokeRect(badgeX, badgeY, badgeW, badgeH);
 
     ctx.fillStyle = '#f87171';
-    ctx.font = 'bold 24px Inter, sans-serif';
-    ctx.fillText('🔥 HEY, YAPTIĞIM HAMLEYE BAK!', width / 2, topY - 12);
+    ctx.font = 'bold 24px Inter, system-ui, sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('🔥 HEY, YAPTIĞIM HAMLEYE BAK!', width / 2, badgeY + badgeH / 2);
 
     // Match Players
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 36px Inter, sans-serif';
-    ctx.fillText(`${metadata.white.name} vs ${metadata.black.name}`, width / 2, topY + 45);
+    ctx.font = '900 36px Inter, system-ui, sans-serif';
+    ctx.fillText(`⚪ ${whiteName} ${whiteRating} vs ⚫ ${blackName} ${blackRating}`, width / 2, topY + 45);
 
     ctx.fillStyle = '#9ca3af';
-    ctx.font = '500 20px Inter, sans-serif';
-    ctx.fillText(`Sonuç: ${metadata.result || '*'} • Açılış: ${metadata.opening || 'Standart Oyun'}`, width / 2, topY + 80);
+    ctx.font = '500 20px Inter, system-ui, sans-serif';
+    ctx.fillText(`Sonuç: ${matchResult} • Chess Review Doğrulanmış Analiz`, width / 2, topY + 80);
 
     // 3. Chessboard Rendering
     const boardSize = ratio === '1:1' ? 620 : 760;
     const boardX = (width - boardSize) / 2;
-    const boardY = ratio === '1:1' ? 240 : 360;
+    const boardY = ratio === '1:1' ? 230 : 360;
     const squareSize = boardSize / 8;
 
-    // Board shadow and border
-    ctx.fillStyle = '#262421';
-    ctx.fillRect(boardX - 12, boardY - 12, boardSize + 24, boardSize + 24);
+    // Board Frame with 3D bevel & accent border
+    ctx.fillStyle = '#211f1c';
+    ctx.fillRect(boardX - 14, boardY - 14, boardSize + 28, boardSize + 28);
     ctx.strokeStyle = '#81b64c';
     ctx.lineWidth = 3;
-    ctx.strokeRect(boardX - 12, boardY - 12, boardSize + 24, boardSize + 24);
+    ctx.strokeRect(boardX - 14, boardY - 14, boardSize + 28, boardSize + 28);
 
     // Parse FEN piece positions
-    const fenParts = (fen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR').split(' ')[0].split('/');
+    const cleanFen = (fen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR').trim();
+    const fenRows = cleanFen.split(' ')[0].split('/');
     const isFlipped = orientation === 'black';
 
-    // Highlight squares if activeMove exists
     const fromSquare = activeMove?.from;
     const toSquare = activeMove?.to;
 
-
+    let fromCenter: { x: number; y: number } | null = null;
+    let toCenter: { x: number; y: number } | null = null;
 
     // Draw 64 squares
     for (let row = 0; row < 8; row++) {
@@ -155,26 +175,27 @@ export const MoveShareModal: React.FC<MoveShareModalProps> = ({
         const sqX = boardX + col * squareSize;
         const sqY = boardY + row * squareSize;
 
-        // Coordinates in chess notation
         const fileChar = String.fromCharCode('a'.charCodeAt(0) + (isFlipped ? 7 - col : col));
         const rankNum = isFlipped ? row + 1 : 8 - row;
         const squareName = `${fileChar}${rankNum}`;
 
-        // Base square color
         if (squareName === toSquare) {
-          ctx.fillStyle = 'rgba(247, 206, 41, 0.75)'; // Target square gold
+          ctx.fillStyle = 'rgba(247, 206, 41, 0.85)'; // Target gold
+          toCenter = { x: sqX + squareSize / 2, y: sqY + squareSize / 2 };
         } else if (squareName === fromSquare) {
-          ctx.fillStyle = 'rgba(129, 182, 76, 0.75)'; // Source square green
+          ctx.fillStyle = 'rgba(129, 182, 76, 0.80)'; // Source green
+          fromCenter = { x: sqX + squareSize / 2, y: sqY + squareSize / 2 };
         } else {
-          ctx.fillStyle = isLight ? '#eeeed2' : '#769656';
+          ctx.fillStyle = isLight ? '#f0d9b5' : '#b58863'; // Rich chess wood colors
         }
+
         ctx.fillRect(sqX, sqY, squareSize, squareSize);
       }
     }
 
-    // Place pieces from FEN
+    // Place chess pieces
     for (let r = 0; r < 8; r++) {
-      const fenRow = isFlipped ? fenParts[7 - r] : fenParts[r];
+      const fenRow = fenRows[isFlipped ? 7 - r : r] || '8';
       let col = 0;
 
       for (let i = 0; i < fenRow.length; i++) {
@@ -189,15 +210,14 @@ export const MoveShareModal: React.FC<MoveShareModalProps> = ({
           const isWhitePiece = char === char.toUpperCase();
           const symbol = PIECE_SYMBOLS[char] || '';
 
-          // Draw piece symbol with clear contrast
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.font = `bold ${Math.floor(squareSize * 0.76)}px "Apple Symbols", "DejaVu Sans", "Segoe UI Symbol", sans-serif`;
 
-          // Outer shadow for piece readability
-          ctx.fillStyle = isWhitePiece ? '#ffffff' : '#18181b';
-          ctx.strokeStyle = isWhitePiece ? '#27272a' : '#f4f4f5';
-          ctx.lineWidth = 1.5;
+          // Outer outline for readable pieces
+          ctx.fillStyle = isWhitePiece ? '#ffffff' : '#171717';
+          ctx.strokeStyle = isWhitePiece ? '#1f2937' : '#f3f4f6';
+          ctx.lineWidth = 1.8;
 
           ctx.strokeText(symbol, sqX + squareSize / 2, sqY + squareSize / 2 + 2);
           ctx.fillText(symbol, sqX + squareSize / 2, sqY + squareSize / 2 + 2);
@@ -207,44 +227,84 @@ export const MoveShareModal: React.FC<MoveShareModalProps> = ({
       }
     }
 
+    // Draw Move Direction Arrow (From -> To)
+    if (fromCenter && toCenter) {
+      const dx = toCenter.x - fromCenter.x;
+      const dy = toCenter.y - fromCenter.y;
+      const angle = Math.atan2(dy, dx);
+      const headlen = squareSize * 0.35;
+
+      ctx.save();
+      ctx.strokeStyle = 'rgba(234, 179, 8, 0.9)';
+      ctx.fillStyle = 'rgba(234, 179, 8, 0.9)';
+      ctx.lineWidth = squareSize * 0.16;
+      ctx.lineCap = 'round';
+
+      // Line
+      ctx.beginPath();
+      ctx.moveTo(fromCenter.x, fromCenter.y);
+      ctx.lineTo(toCenter.x, toCenter.y);
+      ctx.stroke();
+
+      // Arrow Head
+      ctx.beginPath();
+      ctx.moveTo(toCenter.x, toCenter.y);
+      ctx.lineTo(
+        toCenter.x - headlen * Math.cos(angle - Math.PI / 6),
+        toCenter.y - headlen * Math.sin(angle - Math.PI / 6)
+      );
+      ctx.lineTo(
+        toCenter.x - headlen * Math.cos(angle + Math.PI / 6),
+        toCenter.y - headlen * Math.sin(angle + Math.PI / 6)
+      );
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+    }
+
     // 4. Move Badge & Details Section
-    const infoY = ratio === '1:1' ? 900 : 1200;
+    const infoY = ratio === '1:1' ? 895 : 1210;
 
-    // Move Highlight Pill
-    ctx.fillStyle = '#262421';
-    ctx.fillRect(width / 2 - 340, infoY, 680, 130);
-    ctx.strokeStyle = '#363431';
+    // Move Highlight Card
+    const cardW = 720;
+    const cardH = 135;
+    const cardX = (width - cardW) / 2;
+
+    ctx.fillStyle = '#1c1a17';
+    ctx.fillRect(cardX, infoY, cardW, cardH);
+    ctx.strokeStyle = '#36332c';
     ctx.lineWidth = 2;
-    ctx.strokeRect(width / 2 - 340, infoY, 680, 130);
+    ctx.strokeRect(cardX, infoY, cardW, cardH);
 
-    // Left: Move SAN & Symbol
+    // Left: Move SAN & Badge
     ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
     ctx.fillStyle = '#ffffff';
-    ctx.font = '900 48px Inter, sans-serif';
-    ctx.fillText(moveFullText, width / 2 - 305, infoY + 60);
+    ctx.font = '900 46px Inter, system-ui, sans-serif';
+    ctx.fillText(moveFullText, cardX + 30, infoY + 60);
 
     // Classification tag
     ctx.fillStyle = classConfig.color;
-    ctx.font = 'bold 28px Inter, sans-serif';
-    ctx.fillText(`${classConfig.label} ${classConfig.symbol}`, width / 2 - 305, infoY + 102);
+    ctx.font = 'bold 28px Inter, system-ui, sans-serif';
+    ctx.fillText(`${classConfig.label} ${classConfig.symbol}`, cardX + 30, infoY + 104);
 
     // Right: Evaluation & Accuracy
     ctx.textAlign = 'right';
     ctx.fillStyle = '#38bdf8';
-    ctx.font = 'bold 32px Inter, sans-serif';
-    ctx.fillText(evalScoreText, width / 2 + 305, infoY + 60);
+    ctx.font = 'bold 32px Inter, system-ui, sans-serif';
+    ctx.fillText(evalScoreText, cardX + cardW - 30, infoY + 60);
 
-    ctx.fillStyle = '#a1a1aa';
-    ctx.font = '500 20px Inter, sans-serif';
-    ctx.fillText('Stockfish 16 WASM', width / 2 + 305, infoY + 98);
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = '600 20px Inter, system-ui, sans-serif';
+    ctx.fillText('Stockfish 16 WASM', cardX + cardW - 30, infoY + 100);
 
     // Coach summary snippet
     if (activeMove?.comment) {
-      const commentY = ratio === '1:1' ? 1065 : 1380;
+      const commentY = ratio === '1:1' ? 1065 : 1400;
       ctx.textAlign = 'center';
       ctx.fillStyle = '#e2e8f0';
-      ctx.font = 'italic 500 22px Inter, sans-serif';
-      const commentSnippet = `"${activeMove.comment.slice(0, 90)}${activeMove.comment.length > 90 ? '...' : ''}"`;
+      ctx.font = 'italic 500 22px Inter, system-ui, sans-serif';
+      const commentSnippet = `"${activeMove.comment.slice(0, 85)}${activeMove.comment.length > 85 ? '...' : ''}"`;
       ctx.fillText(commentSnippet, width / 2, commentY);
     }
 
@@ -252,23 +312,51 @@ export const MoveShareModal: React.FC<MoveShareModalProps> = ({
     const footerY = height - (ratio === '1:1' ? 65 : 90);
     ctx.textAlign = 'center';
     ctx.fillStyle = '#81b64c';
-    ctx.font = 'bold 24px Inter, sans-serif';
-    ctx.fillText('♟️ Chess Review • Ücretsiz Satranç Oyun Analiz Platformu', width / 2, footerY);
+    ctx.font = 'bold 24px Inter, system-ui, sans-serif';
+    ctx.fillText('♟️ Chess Review • Ücretsiz Satranç Oyun Analizi', width / 2, footerY);
 
-    ctx.fillStyle = '#64748b';
-    ctx.font = '500 17px Inter, sans-serif';
+    ctx.fillStyle = '#71717a';
+    ctx.font = '500 17px Inter, system-ui, sans-serif';
     ctx.fillText('Geliştiriciler: DevErennn & DevOnurrr • github.com/DevErennn/chess-analysis-site', width / 2, footerY + 28);
 
     return canvas;
-  };
+  }, [
+    whiteName,
+    blackName,
+    whiteRating,
+    blackRating,
+    matchResult,
+    fen,
+    activeMove,
+    orientation,
+    moveFullText,
+    classConfig,
+    evalScoreText,
+  ]);
+
+  // Generate preview data URL whenever dependencies change
+  useEffect(() => {
+    if (!isOpen) return;
+
+    try {
+      const canvas = drawCard(aspectRatio);
+      canvasRef.current = canvas;
+      const dataUrl = canvas.toDataURL('image/png');
+      setPreviewDataUrl(dataUrl);
+    } catch (err) {
+      console.error('Error generating card preview:', err);
+    }
+  }, [isOpen, aspectRatio, drawCard]);
+
+  if (!isOpen) return null;
 
   const handleDownloadImage = () => {
     setIsDownloading(true);
     try {
-      const canvas = drawCanvas(aspectRatio);
+      const canvas = drawCard(aspectRatio);
       const url = canvas.toDataURL('image/png');
       const link = document.createElement('a');
-      const safeSan = moveSan.replace(/[^a-zA-Z0-9]/g, '');
+      const safeSan = (activeMove?.san || 'pozisyon').replace(/[^a-zA-Z0-9]/g, '');
       link.download = `hey_yaptigim_hamleye_bak_${safeSan}_chess_review.png`;
       link.href = url;
       document.body.appendChild(link);
@@ -291,6 +379,30 @@ export const MoveShareModal: React.FC<MoveShareModalProps> = ({
       setTimeout(() => setCopiedText(false), 2000);
     } catch {
       // Fallback
+    }
+  };
+
+  const handleCopyImage = async () => {
+    try {
+      const canvas = drawCard(aspectRatio);
+      canvas.toBlob(async (blob) => {
+        if (!blob) return;
+        if (navigator.clipboard && window.ClipboardItem) {
+          try {
+            await navigator.clipboard.write([
+              new ClipboardItem({ 'image/png': blob })
+            ]);
+            setCopiedImage(true);
+            setTimeout(() => setCopiedImage(false), 2500);
+            return;
+          } catch {
+            // Fall back to copying share text
+          }
+        }
+        handleCopyText();
+      }, 'image/png');
+    } catch {
+      handleCopyText();
     }
   };
 
@@ -318,7 +430,7 @@ export const MoveShareModal: React.FC<MoveShareModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
       <div
-        className="relative w-full max-w-xl bg-chess-card border border-chess-border rounded-2xl shadow-2xl max-h-[92vh] flex flex-col text-gray-100 overflow-hidden"
+        className="relative w-full max-w-xl bg-chess-card border border-chess-border rounded-2xl shadow-2xl max-h-[94vh] flex flex-col text-gray-100 overflow-hidden"
         role="dialog"
         aria-modal="true"
         aria-labelledby="move-share-title"
@@ -337,36 +449,40 @@ export const MoveShareModal: React.FC<MoveShareModalProps> = ({
         </button>
 
         {/* Modal Header */}
-        <div className="p-5 sm:p-6 pb-3 border-b border-chess-border/70 flex items-center gap-3">
-          <div className="w-11 h-11 rounded-2xl bg-red-500/15 border border-red-500/30 flex items-center justify-center text-red-400 shrink-0 shadow-inner">
-            <Flame className="w-6 h-6 animate-pulse" />
+        <div className="p-4 sm:p-5 pb-3 border-b border-chess-border/70 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-red-500/15 border border-red-500/30 flex items-center justify-center text-red-400 shrink-0 shadow-inner">
+            <Flame className="w-5 h-5 animate-pulse" />
           </div>
           <div>
-            <h3 id="move-share-title" className="text-lg sm:text-xl font-black text-white tracking-tight flex items-center gap-2">
+            <h3 id="move-share-title" className="text-base sm:text-lg font-black text-white tracking-tight flex items-center gap-2">
               Hey, Yaptığım Hamleye Bak!
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 font-bold uppercase tracking-wide">
-                Sosyal Paylaşım
+                Görsel Kart
               </span>
             </h3>
-            <p className="text-xs text-gray-400 mt-0.5">
-              Instagram ve WhatsApp için mevcut tahtayı ve hamleni görsel kart olarak dışa aktar!
+            <p className="text-xs text-gray-400">
+              Tahtanın fotoğrafı ve hamleni içeren yüksek çözünürlüklü sosyal medya kartı
             </p>
           </div>
         </div>
 
         {/* Modal Body */}
-        <div className="p-5 sm:p-6 overflow-y-auto flex-1 space-y-5">
+        <div className="p-4 sm:p-5 overflow-y-auto flex-1 space-y-4">
           {/* Aspect Ratio Switcher */}
-          <div className="flex items-center justify-between gap-3 bg-chess-surface p-1.5 rounded-xl border border-chess-border text-xs">
-            <span className="text-gray-400 font-medium px-2">Kart Boyutu:</span>
+          <div className="flex items-center justify-between gap-2 bg-chess-surface p-1.5 rounded-xl border border-chess-border text-xs">
+            <span className="text-gray-400 font-semibold px-2 flex items-center gap-1.5">
+              <Layers className="w-3.5 h-3.5 text-chess-accent" />
+              <span>Kart Formatı:</span>
+            </span>
             <div className="flex items-center gap-1">
               <button
                 type="button"
                 onClick={() => setAspectRatio('1:1')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition-colors cursor-pointer ${aspectRatio === '1:1'
-                    ? 'bg-chess-card text-white border border-chess-border shadow-sm text-chess-accent'
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                  aspectRatio === '1:1'
+                    ? 'bg-chess-card text-chess-accent border border-chess-border shadow-sm'
                     : 'text-gray-400 hover:text-white'
-                  }`}
+                }`}
               >
                 <Square className="w-3.5 h-3.5" />
                 <span>1:1 Kare (Post)</span>
@@ -375,10 +491,11 @@ export const MoveShareModal: React.FC<MoveShareModalProps> = ({
               <button
                 type="button"
                 onClick={() => setAspectRatio('9:16')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition-colors cursor-pointer ${aspectRatio === '9:16'
-                    ? 'bg-chess-card text-white border border-chess-border shadow-sm text-chess-accent'
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                  aspectRatio === '9:16'
+                    ? 'bg-chess-card text-chess-accent border border-chess-border shadow-sm'
                     : 'text-gray-400 hover:text-white'
-                  }`}
+                }`}
               >
                 <Smartphone className="w-3.5 h-3.5" />
                 <span>9:16 Dikey (Hikaye)</span>
@@ -386,57 +503,38 @@ export const MoveShareModal: React.FC<MoveShareModalProps> = ({
             </div>
           </div>
 
-          {/* Interactive Card Preview Box */}
-          <div className="relative rounded-2xl bg-gradient-to-b from-[#1a1916] to-[#12110e] border border-chess-border p-4 sm:p-5 shadow-2xl flex flex-col items-center text-center space-y-3 overflow-hidden">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-500/15 border border-red-500/30 text-red-400 text-xs font-bold shadow-sm">
-              <Flame className="w-3.5 h-3.5" />
-              <span>HEY, YAPTIĞIM HAMLEYE BAK!</span>
-            </div>
-
-            <div className="text-xs text-gray-300 font-semibold truncate max-w-full">
-              ⚪ {metadata.white.name} vs ⚫ {metadata.black.name}
-            </div>
-
-            {/* Current Move Pill */}
-            <div className="w-full max-w-sm p-3 rounded-xl bg-chess-card border border-chess-border/80 flex items-center justify-between shadow-md">
-              <div className="flex items-center gap-2">
-                <span className="text-lg font-black text-white font-mono">{moveFullText}</span>
-                <span
-                  className="px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider"
-                  style={{ backgroundColor: `${classConfig.color}25`, color: classConfig.color }}
-                >
-                  {classConfig.label} {classConfig.symbol}
-                </span>
+          {/* Real Live Card Preview Image */}
+          <div className="flex flex-col items-center justify-center p-3 rounded-2xl bg-black/40 border border-chess-border/80 shadow-inner">
+            {previewDataUrl ? (
+              <div className="relative group max-h-[46vh] flex items-center justify-center">
+                <img
+                  src={previewDataUrl}
+                  alt="Hey yaptığım hamleye bak kartı"
+                  className={`rounded-xl shadow-2xl object-contain border border-chess-border/80 max-h-[44vh] ${
+                    aspectRatio === '1:1' ? 'aspect-square' : 'aspect-[9/16]'
+                  }`}
+                />
+                <div className="absolute bottom-2 right-2 px-2 py-0.5 rounded bg-black/75 text-[10px] text-gray-300 font-mono border border-white/10 pointer-events-none">
+                  {aspectRatio === '1:1' ? '1200 x 1200' : '1080 x 1920'}
+                </div>
               </div>
-              <div className="text-right">
-                <span className="text-xs font-bold text-cyan-400 block">{evalScoreText}</span>
-                <span className="text-[10px] text-gray-500">Stockfish 16</span>
+            ) : (
+              <div className="py-20 text-center text-gray-400 text-xs">
+                <Sparkles className="w-6 h-6 mx-auto mb-2 text-chess-accent animate-spin" />
+                <span>Görsel kart hazırlanıyor...</span>
               </div>
-            </div>
-
-            {/* Coach comment snippet */}
-            {activeMove?.comment && (
-              <p className="text-xs text-gray-400 italic max-w-md px-2">
-                "{activeMove.comment}"
-              </p>
             )}
-
-            {/* Branding Footer */}
-            <div className="text-[11px] text-gray-500 pt-1 border-t border-chess-border/40 w-full flex items-center justify-between">
-              <span className="text-chess-accent font-semibold">♟️ Chess Review</span>
-              <span>DevErennn & DevOnurrr</span>
-            </div>
           </div>
 
-          {/* Sharing Buttons Bar */}
-          <div className="space-y-2.5">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          {/* Action Buttons */}
+          <div className="space-y-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {/* Download PNG Button */}
               <button
                 type="button"
                 onClick={handleDownloadImage}
-                disabled={isDownloading}
-                className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-chess-accent hover:bg-chess-accent/90 text-chess-dark font-extrabold text-xs transition-all shadow-lg shadow-chess-accent/20 cursor-pointer disabled:opacity-50"
+                disabled={isDownloading || !previewDataUrl}
+                className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-chess-accent hover:bg-chess-accent/90 text-chess-dark font-extrabold text-xs transition-all shadow-md shadow-chess-accent/20 cursor-pointer disabled:opacity-50"
               >
                 <Download className="w-4 h-4" />
                 <span>{downloadSuccess ? 'Görsel İndirildi! 🎉' : 'Görseli İndir (PNG)'}</span>
@@ -446,29 +544,29 @@ export const MoveShareModal: React.FC<MoveShareModalProps> = ({
               <button
                 type="button"
                 onClick={handleWhatsAppShare}
-                className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs transition-all shadow-lg shadow-emerald-600/20 cursor-pointer"
+                className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs transition-all shadow-md shadow-emerald-600/20 cursor-pointer"
               >
                 <MessageCircle className="w-4 h-4" />
                 <span>WhatsApp'ta Paylaş</span>
               </button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              {/* Copy Share Text Button */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {/* Copy Image / Text Button */}
               <button
                 type="button"
-                onClick={handleCopyText}
-                className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-chess-surface hover:bg-chess-card border border-chess-border text-gray-300 hover:text-white font-semibold text-xs transition-colors cursor-pointer"
+                onClick={handleCopyImage}
+                className="flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-chess-surface hover:bg-chess-card border border-chess-border text-gray-300 hover:text-white font-semibold text-xs transition-colors cursor-pointer"
               >
-                {copiedText ? (
+                {copiedImage || copiedText ? (
                   <>
-                    <Check className="w-4 h-4 text-emerald-400" />
-                    <span className="text-emerald-400">Metin Kopyalandı!</span>
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="text-emerald-400">{copiedImage ? 'Görsel Kopyalandı!' : 'Metin Kopyalandı!'}</span>
                   </>
                 ) : (
                   <>
-                    <Copy className="w-4 h-4" />
-                    <span>Paylaşım Metnini Kopyala</span>
+                    <Copy className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Görseli / Metni Kopyala</span>
                   </>
                 )}
               </button>
@@ -477,19 +575,19 @@ export const MoveShareModal: React.FC<MoveShareModalProps> = ({
               <button
                 type="button"
                 onClick={handleNativeShare}
-                className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-chess-surface hover:bg-chess-card border border-chess-border text-gray-300 hover:text-white font-semibold text-xs transition-colors cursor-pointer"
+                className="flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-chess-surface hover:bg-chess-card border border-chess-border text-gray-300 hover:text-white font-semibold text-xs transition-colors cursor-pointer"
               >
-                <Share2 className="w-4 h-4 text-purple-400" />
-                <span>Instagram / Diğer Uygulamalar</span>
+                <Share2 className="w-3.5 h-3.5 text-purple-400" />
+                <span>Instagram / Diğer</span>
               </button>
             </div>
           </div>
 
           {/* Social tip alert */}
-          <div className="p-3 rounded-xl bg-chess-surface/60 border border-chess-border/60 text-[11px] text-gray-400 leading-relaxed flex items-center gap-2.5">
-            <span className="text-base">💡</span>
+          <div className="p-2.5 rounded-xl bg-chess-surface/60 border border-chess-border/60 text-[11px] text-gray-400 leading-relaxed flex items-center gap-2">
+            <span className="text-sm">💡</span>
             <span>
-              <strong>İpucu:</strong> "Görseli İndir" butonuna tıklayıp fotoğrafı doğrudan <strong>Instagram Hikayeler</strong> veya <strong>WhatsApp Durum</strong>'a yükleyerek arkadaşlarınla paylaşabilirsin!
+              <strong>İpucu:</strong> "Görseli İndir" butonuna basarak kartı doğrudan <strong>Instagram Hikayeler</strong> veya <strong>WhatsApp Durum</strong>'a yükleyebilirsiniz!
             </span>
           </div>
         </div>
