@@ -25,6 +25,8 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [emailError, setEmailError] = useState<string | null>(null);
+  const [honeypot, setHoneypot] = useState('');
+  const [cooldownError, setCooldownError] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [discordDelivered, setDiscordDelivered] = useState(false);
@@ -48,20 +50,42 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setCooldownError(null);
+
+    // Bot trap: if honeypot is filled, simulate success without dispatching
+    if (honeypot) {
+      setSubmitted(true);
+      return;
+    }
+
     if (!message.trim() || isSending) return;
 
     if (!validateEmail(email)) {
       return;
     }
 
+    // Rate limiting / cooldown (1 feedback per 30 seconds per browser)
+    try {
+      const lastSent = Number(localStorage.getItem('chess_review_feedback_last_sent') || 0);
+      const now = Date.now();
+      if (now - lastSent < 30000) {
+        const remainingSec = Math.ceil((30000 - (now - lastSent)) / 1000);
+        setCooldownError(`Spam koruması: Lütfen ${remainingSec} saniye sonra tekrar deneyin.`);
+        return;
+      }
+    } catch {
+      // Ignore storage errors
+    }
+
     setIsSending(true);
 
-    const trimmedName = name.trim();
-    const trimmedEmail = email.trim();
+    const trimmedName = name.trim().slice(0, 80);
+    const trimmedEmail = email.trim().slice(0, 120);
+    const trimmedMessage = message.trim().slice(0, 1500);
 
     const newFeedback = {
       type: feedbackType,
-      message: message.trim(),
+      message: trimmedMessage,
       name: trimmedName,
       email: trimmedEmail,
       contact: trimmedName ? `${trimmedName} (${trimmedEmail})` : trimmedEmail,
@@ -73,6 +97,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
       const existing = JSON.parse(localStorage.getItem('chess_review_user_feedbacks') || '[]');
       existing.push(newFeedback);
       localStorage.setItem('chess_review_user_feedbacks', JSON.stringify(existing));
+      localStorage.setItem('chess_review_feedback_last_sent', String(Date.now()));
     } catch {
       // Ignore storage errors
     }
@@ -97,10 +122,14 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
         const payload = {
           username: 'Chess Review Bildirim',
           avatar_url: 'https://raw.githubusercontent.com/DevErennn/chess-analysis-site/main/public/mini-logo.png',
+          // Security: Prevent anyone from pinging @everyone, @here or roles
+          allowed_mentions: {
+            parse: [],
+          },
           embeds: [
             {
               title: `♟️ ${typeLabels[feedbackType] || feedbackType}`,
-              description: message.trim(),
+              description: trimmedMessage,
               color: typeColors[feedbackType] || 0x81b64c,
               fields: [
                 {
@@ -205,6 +234,18 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-4 mt-5">
+                {/* Honeypot field (hidden from genuine users, traps automated bots) */}
+                <input
+                  type="text"
+                  name="website_feedback_hp"
+                  value={honeypot}
+                  onChange={(e) => setHoneypot(e.target.value)}
+                  tabIndex={-1}
+                  autoComplete="off"
+                  className="opacity-0 absolute -z-50 h-0 w-0 pointer-events-none"
+                  aria-hidden="true"
+                />
+
                 {/* Type Selection */}
                 <div>
                   <label className="block text-xs font-semibold text-gray-300 mb-2">
@@ -334,6 +375,13 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
                     Geri bildirimler doğrudan geliştiricilerimiz <strong className="text-gray-200">DevErennn</strong> ve <strong className="text-gray-200">DevOnurrr</strong> tarafından incelenmektedir.
                   </span>
                 </div>
+
+                {cooldownError && (
+                  <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[12px] text-amber-300 flex items-center gap-2">
+                    <span className="text-amber-400">⚠️</span>
+                    <span>{cooldownError}</span>
+                  </div>
+                )}
 
                 {/* Action Buttons */}
                 <div className="flex items-center justify-between gap-3 pt-2">
