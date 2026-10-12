@@ -54,6 +54,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
 
     // Bot trap: if honeypot is filled, simulate success without dispatching
     if (honeypot) {
+      console.warn('Honeypot tetiklendi (bot koruması), gönderim atlandı.');
       setSubmitted(true);
       return;
     }
@@ -102,65 +103,86 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
       // Ignore storage errors
     }
 
-    // 2. Dispatch to Discord Webhook (if configured)
-    if (DISCORD_WEBHOOK_URL) {
-      try {
-        const typeLabels: Record<string, string> = {
-          suggestion: '💡 Yeni Özellik / Öneri',
-          bug: '🐛 Hata Bildirimi',
-          praise: '✨ Beğeni / Teşekkür',
-          other: '💬 Genel Görüş',
-        };
+    // 2. Dispatch to Discord Webhook
+    // Strategy: First try serverless function (/api/feedback), fallback to direct client-side call
+    const typeLabels: Record<string, string> = {
+      suggestion: '💡 Yeni Özellik / Öneri',
+      bug: '🐛 Hata Bildirimi',
+      praise: '✨ Beğeni / Teşekkür',
+      other: '💬 Genel Görüş',
+    };
 
-        const typeColors: Record<string, number> = {
-          suggestion: 0x81b64c, // Green
-          bug: 0xfa412d,        // Red
-          praise: 0x26c2a3,     // Cyan / Turquoise
-          other: 0x5c8bb0,      // Blue
-        };
+    const typeColors: Record<string, number> = {
+      suggestion: 0x81b64c, // Green
+      bug: 0xfa412d,        // Red
+      praise: 0x26c2a3,     // Cyan / Turquoise
+      other: 0x5c8bb0,      // Blue
+    };
 
-        const payload = {
-          username: 'Chess Review Bildirim',
-          avatar_url: 'https://raw.githubusercontent.com/DevErennn/chess-analysis-site/main/public/mini-logo.png',
-          // Security: Prevent anyone from pinging @everyone, @here or roles
-          allowed_mentions: {
-            parse: [],
-          },
-          embeds: [
+    const payload = {
+      username: 'Chess Review Bildirim',
+      avatar_url: 'https://raw.githubusercontent.com/DevErennn/chess-analysis-site/main/public/mini-logo.png',
+      // Security: Prevent anyone from pinging @everyone, @here or roles
+      allowed_mentions: {
+        parse: [],
+      },
+      embeds: [
+        {
+          title: `♟️ ${typeLabels[feedbackType] || feedbackType}`,
+          description: trimmedMessage,
+          color: typeColors[feedbackType] || 0x81b64c,
+          fields: [
             {
-              title: `♟️ ${typeLabels[feedbackType] || feedbackType}`,
-              description: trimmedMessage,
-              color: typeColors[feedbackType] || 0x81b64c,
-              fields: [
-                {
-                  name: '👤 İsim',
-                  value: trimmedName || 'Belirtilmedi',
-                  inline: true,
-                },
-                {
-                  name: '📧 E-posta',
-                  value: trimmedEmail,
-                  inline: true,
-                },
-                {
-                  name: '🏷️ Kategori',
-                  value: typeLabels[feedbackType] || feedbackType,
-                  inline: true,
-                },
-                {
-                  name: '⏰ Tarih',
-                  value: new Date().toLocaleString('tr-TR'),
-                  inline: true,
-                },
-              ],
-              footer: {
-                text: 'Chess Review • DevErennn & DevOnurrr',
-              },
-              timestamp: new Date().toISOString(),
+              name: '👤 İsim',
+              value: trimmedName || 'Belirtilmedi',
+              inline: true,
+            },
+            {
+              name: '📧 E-posta',
+              value: trimmedEmail,
+              inline: true,
+            },
+            {
+              name: '🏷️ Kategori',
+              value: typeLabels[feedbackType] || feedbackType,
+              inline: true,
+            },
+            {
+              name: '⏰ Tarih',
+              value: new Date().toLocaleString('tr-TR'),
+              inline: true,
             },
           ],
-        };
+          footer: {
+            text: 'Chess Review • DevErennn & DevOnurrr',
+          },
+          timestamp: new Date().toISOString(),
+        },
+      ],
+    };
 
+    let delivered = false;
+
+    // A) Try secure serverless route (/api/feedback)
+    try {
+      const apiResponse = await fetch('/api/feedback', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (apiResponse.ok || apiResponse.status === 204) {
+        delivered = true;
+      }
+    } catch {
+      // Serverless route not available (e.g. running on Vite dev server without vercel CLI)
+    }
+
+    // B) Direct client-side fallback if serverless didn't deliver & client webhook is configured
+    if (!delivered && DISCORD_WEBHOOK_URL) {
+      try {
         const response = await fetch(DISCORD_WEBHOOK_URL, {
           method: 'POST',
           headers: {
@@ -170,11 +192,20 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
         });
 
         if (response.ok || response.status === 204) {
-          setDiscordDelivered(true);
+          delivered = true;
+        } else {
+          const errText = await response.text().catch(() => '');
+          console.error(`Discord Webhook yanıt hatası [HTTP ${response.status}]:`, errText);
         }
       } catch (err) {
-        console.warn('Discord webhook notification notice:', err);
+        console.error('Discord Webhook istek hatası (CORS / AdBlock / Ağ engeli olabilir):', err);
       }
+    }
+
+    if (delivered) {
+      setDiscordDelivered(true);
+    } else if (!DISCORD_WEBHOOK_URL) {
+      console.warn('Webhook bildirim uç noktası yanıt vermedi ve VITE_DISCORD_WEBHOOK_URL tanımlı değil.');
     }
 
     setIsSending(false);
