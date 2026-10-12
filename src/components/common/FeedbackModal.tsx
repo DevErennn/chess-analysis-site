@@ -22,23 +22,49 @@ const DISCORD_WEBHOOK_URL = import.meta.env.VITE_DISCORD_WEBHOOK_URL || '';
 export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose }) => {
   const [feedbackType, setFeedbackType] = useState<'suggestion' | 'bug' | 'praise' | 'other'>('suggestion');
   const [message, setMessage] = useState('');
-  const [contact, setContact] = useState('');
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [emailError, setEmailError] = useState<string | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [discordDelivered, setDiscordDelivered] = useState(false);
 
   if (!isOpen) return null;
 
+  const validateEmail = (val: string): boolean => {
+    const trimmed = val.trim();
+    if (!trimmed) {
+      setEmailError('E-posta adresi zorunludur.');
+      return false;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(trimmed)) {
+      setEmailError('Lütfen geçerli bir e-posta adresi giriniz (örn: isim@mail.com).');
+      return false;
+    }
+    setEmailError(null);
+    return true;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!message.trim() || isSending) return;
 
+    if (!validateEmail(email)) {
+      return;
+    }
+
     setIsSending(true);
+
+    const trimmedName = name.trim();
+    const trimmedEmail = email.trim();
 
     const newFeedback = {
       type: feedbackType,
       message: message.trim(),
-      contact: contact.trim(),
+      name: trimmedName,
+      email: trimmedEmail,
+      contact: trimmedName ? `${trimmedName} (${trimmedEmail})` : trimmedEmail,
       date: new Date().toISOString(),
     };
 
@@ -78,8 +104,13 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
               color: typeColors[feedbackType] || 0x81b64c,
               fields: [
                 {
-                  name: '👤 İletişim / Kullanıcı',
-                  value: contact.trim() || 'Belirtilmedi',
+                  name: '👤 İsim',
+                  value: trimmedName || 'Belirtilmedi',
+                  inline: true,
+                },
+                {
+                  name: '📧 E-posta',
+                  value: trimmedEmail,
                   inline: true,
                 },
                 {
@@ -125,7 +156,9 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
     setSubmitted(false);
     setIsSending(false);
     setMessage('');
-    setContact('');
+    setName('');
+    setEmail('');
+    setEmailError(null);
     onClose();
   };
 
@@ -248,19 +281,50 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
                   />
                 </div>
 
-                {/* Contact Input (Optional) */}
-                <div>
-                  <label htmlFor="feedback-contact" className="block text-xs font-semibold text-gray-300 mb-1.5">
-                    İletişim / E-posta <span className="text-gray-500 font-normal">(opsiyonel)</span>
-                  </label>
-                  <input
-                    id="feedback-contact"
-                    type="text"
-                    value={contact}
-                    onChange={(e) => setContact(e.target.value)}
-                    placeholder="ornek@mail.com veya Chess.com kullanıcı adı"
-                    className="w-full px-3.5 py-2 rounded-xl bg-chess-surface border border-chess-border text-xs text-gray-100 placeholder-gray-500 focus:outline-none focus:border-chess-accent focus:ring-1 focus:ring-chess-accent transition-colors"
-                  />
+                {/* Contact Section: 1. Name & 2. Email (Required) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="feedback-name" className="block text-xs font-semibold text-gray-300 mb-1.5">
+                      İsim / Kullanıcı Adı <span className="text-gray-500 font-normal">(opsiyonel)</span>
+                    </label>
+                    <input
+                      id="feedback-name"
+                      type="text"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="Örn: Ahmet veya Chess.com nicki"
+                      className="w-full px-3.5 py-2 rounded-xl bg-chess-surface border border-chess-border text-xs text-gray-100 placeholder-gray-500 focus:outline-none focus:border-chess-accent focus:ring-1 focus:ring-chess-accent transition-colors"
+                    />
+                  </div>
+
+                  <div>
+                    <label htmlFor="feedback-email" className="block text-xs font-semibold text-gray-300 mb-1.5 flex items-center justify-between">
+                      <span>E-posta Adresi <span className="text-red-400 font-bold">*</span></span>
+                      <span className="text-[10px] text-chess-accent font-medium">Zorunlu</span>
+                    </label>
+                    <input
+                      id="feedback-email"
+                      type="email"
+                      required
+                      value={email}
+                      onChange={(e) => {
+                        setEmail(e.target.value);
+                        if (emailError) validateEmail(e.target.value);
+                      }}
+                      onBlur={(e) => validateEmail(e.target.value)}
+                      placeholder="ornek@mail.com"
+                      className={`w-full px-3.5 py-2 rounded-xl bg-chess-surface border text-xs text-gray-100 placeholder-gray-500 focus:outline-none transition-colors ${
+                        emailError 
+                          ? 'border-red-500 focus:border-red-500 focus:ring-1 focus:ring-red-500/50' 
+                          : 'border-chess-border focus:border-chess-accent focus:ring-1 focus:ring-chess-accent'
+                      }`}
+                    />
+                    {emailError && (
+                      <p className="text-[11px] text-red-400 mt-1 font-medium animate-in fade-in">
+                        {emailError}
+                      </p>
+                    )}
+                  </div>
                 </div>
 
                 {/* Developer note */}

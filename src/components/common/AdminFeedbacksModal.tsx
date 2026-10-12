@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { X, MessageSquare, Download, Trash2, Calendar, User, Tag } from 'lucide-react';
+import { X, MessageSquare, Download, Trash2, Calendar, User, Tag, Mail } from 'lucide-react';
 
 interface FeedbackItem {
   type: string;
   message: string;
+  name?: string;
+  email?: string;
   contact?: string;
   date: string;
 }
@@ -120,16 +122,25 @@ export const AdminFeedbacksModal: React.FC<AdminFeedbacksModalProps> = ({ isOpen
                 className="p-4 rounded-xl bg-chess-surface/80 border border-chess-border/80 hover:border-chess-accent/40 transition-colors space-y-2.5 text-xs"
               >
                 <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="px-2 py-0.5 rounded font-bold uppercase tracking-wider text-[10px] bg-chess-accent/20 text-chess-accent border border-chess-accent/30 flex items-center gap-1">
                       <Tag className="w-3 h-3" />
                       {item.type}
                     </span>
-                    {item.contact && (
-                      <span className="text-gray-300 font-mono flex items-center gap-1">
-                        <User className="w-3 h-3 text-gray-500" />
-                        {item.contact}
+                    {(item.name || item.contact) && (
+                      <span className="text-gray-300 font-medium flex items-center gap-1 bg-chess-card px-2 py-0.5 rounded border border-chess-border">
+                        <User className="w-3 h-3 text-chess-accent" />
+                        {item.name || item.contact}
                       </span>
+                    )}
+                    {item.email && (
+                      <a 
+                        href={`mailto:${item.email}`}
+                        className="text-gray-300 hover:text-white font-mono flex items-center gap-1 bg-chess-card px-2 py-0.5 rounded border border-chess-border hover:border-chess-accent transition-colors"
+                      >
+                        <Mail className="w-3 h-3 text-blue-400" />
+                        {item.email}
+                      </a>
                     )}
                   </div>
                   <span className="text-gray-500 font-mono text-[11px] flex items-center gap-1">

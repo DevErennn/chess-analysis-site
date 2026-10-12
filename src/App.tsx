@@ -4,6 +4,7 @@ import { LandingPage } from './components/landing/LandingPage';
 import { AnalysisView } from './components/analysis/AnalysisView';
 import { MaintenancePage } from './components/maintenance/MaintenancePage';
 import { FeedbackModal } from './components/common/FeedbackModal';
+import { WelcomeModal } from './components/common/WelcomeModal';
 import { SplashScreen } from './components/common/SplashScreen';
 import { AdminFeedbacksModal } from './components/common/AdminFeedbacksModal';
 
@@ -13,17 +14,17 @@ function App() {
   const [viewMode, setViewMode] = useState<'landing' | 'analysis'>('landing');
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
   const [isAdminFeedbacksOpen, setIsAdminFeedbacksOpen] = useState(false);
+  const [isWelcomeOpen, setIsWelcomeOpen] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
 
-  // Dümenden yükleme ekranı bittiğinde görüş ve öneriler penceresi açılsın
+  // Yükleme ekranı bittiğinde ilk olarak Hoş Geldiniz & Bilgilendirme modalı açılsın
   const handleSplashFinish = () => {
     setShowSplash(false);
-    const hasSeenSession = sessionStorage.getItem('chess_review_initial_feedback_shown');
-    if (!hasSeenSession) {
+    const hasSeenWelcome = sessionStorage.getItem('chess_review_welcomed');
+    if (!hasSeenWelcome) {
       setTimeout(() => {
-        setIsFeedbackOpen(true);
-        sessionStorage.setItem('chess_review_initial_feedback_shown', 'true');
-      }, 500);
+        setIsWelcomeOpen(true);
+      }, 300);
     }
   };
 
@@ -57,6 +58,7 @@ function App() {
         <LandingPage 
           onSelectGame={handleSelectGame} 
           onOpenFeedback={() => setIsFeedbackOpen(true)} 
+          onOpenWelcome={() => setIsWelcomeOpen(true)}
           onOpenAdminFeedbacks={() => setIsAdminFeedbacksOpen(true)}
         />
       ) : (
@@ -69,6 +71,16 @@ function App() {
           />
         )
       )}
+
+      {/* Hoş Geldiniz & Bilgilendirme Modalı */}
+      <WelcomeModal
+        isOpen={isWelcomeOpen}
+        onClose={() => setIsWelcomeOpen(false)}
+        onOpenFeedback={() => {
+          setIsWelcomeOpen(false);
+          setIsFeedbackOpen(true);
+        }}
+      />
 
       {/* Görüş ve Önerileriniz Penceresi */}
       <FeedbackModal

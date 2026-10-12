@@ -21,12 +21,14 @@ import type { GameMetadata } from '../../types/chess';
 interface LandingPageProps {
   onSelectGame: (pgn: string, metadata: GameMetadata) => void;
   onOpenFeedback?: () => void;
+  onOpenWelcome?: () => void;
   onOpenAdminFeedbacks?: () => void;
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({ 
   onSelectGame, 
   onOpenFeedback,
+  onOpenWelcome,
   onOpenAdminFeedbacks 
 }) => {
   const [activeTab, setActiveTab] = useState<'pgn' | 'chesscom' | 'lichess'>('pgn');
@@ -52,11 +54,23 @@ export const LandingPage: React.FC<LandingPageProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 sm:gap-3 text-xs shrink-0">
-            <div className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-chess-surface border border-chess-border text-gray-300">
+          <div className="flex items-center gap-1.5 sm:gap-2.5 text-xs shrink-0">
+            <div className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-chess-surface border border-chess-border text-gray-300">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>Stockfish Hazırlığı: v16 WASM</span>
+              <span>Stockfish: v16 WASM</span>
             </div>
+
+            {onOpenWelcome && (
+              <button
+                type="button"
+                onClick={onOpenWelcome}
+                className="px-2.5 sm:px-3 py-1.5 rounded-lg bg-chess-surface hover:bg-chess-card border border-chess-border text-gray-300 hover:text-white transition-colors flex items-center gap-1.5 font-medium cursor-pointer text-xs"
+                title="Sitenin Kullanımı ve Özellikleri"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-chess-accent" />
+                <span className="hidden sm:inline">Nasıl Kullanılır?</span>
+              </button>
+            )}
 
             {onOpenFeedback && (
               <button
