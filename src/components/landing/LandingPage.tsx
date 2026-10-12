@@ -52,6 +52,18 @@ export const LandingPage: React.FC<LandingPageProps> = ({
                 </span>
               </span>
             </div>
+
+            {/* Mavi ile işaretlenen alan: %100 Türk Geliştirici Logosu */}
+            <div 
+              className="flex items-center gap-1.5 pl-1.5 sm:pl-2 border-l border-chess-border/70 shrink-0"
+              title="%100 Türk Geliştiriciler Tarafından Geliştirildi"
+            >
+              <img 
+                src="/turkish.png" 
+                alt="%100 Türk Geliştiriciler Tarafından Geliştirildi" 
+                className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl shadow-md border border-chess-border/60 object-contain bg-chess-surface shrink-0 hover:scale-105 transition-transform"
+              />
+            </div>
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2.5 text-xs shrink-0">
