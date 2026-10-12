@@ -19,7 +19,8 @@ import type {
   GameAnalysisResult, 
   ClassificationCount,
   EngineEvaluation,
-  EngineProfileId
+  EngineProfileId,
+  MoveClassification
 } from '../../types/chess';
 import { getStockfishService } from '../../lib/stockfishService';
 import { 
@@ -54,12 +55,14 @@ interface AnalysisViewProps {
   pgn: string;
   metadata: GameMetadata;
   onBack: () => void;
+  onOpenFeedback?: () => void;
 }
 
 export const AnalysisView: React.FC<AnalysisViewProps> = ({
   pgn,
   metadata,
   onBack,
+  onOpenFeedback,
 }) => {
   const [copied, setCopied] = useState(false);
   const [orientation, setOrientation] = useState<'white' | 'black'>('white');
@@ -1009,17 +1012,30 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
       />
 
       {/* Footer */}
-      <footer className="border-t border-chess-border/60 py-4 text-center text-xs text-gray-500 bg-chess-surface/40 flex flex-col sm:flex-row items-center justify-between px-6 gap-2">
-        <div>
-          Klavye Kısayolları: <kbd className="px-1.5 py-0.5 rounded bg-chess-card border border-chess-border text-gray-300">←</kbd> Önceki, <kbd className="px-1.5 py-0.5 rounded bg-chess-card border border-chess-border text-gray-300">→</kbd> Sonraki, <kbd className="px-1.5 py-0.5 rounded bg-chess-card border border-chess-border text-gray-300">Boşluk</kbd> Oynat/Durdur, <kbd className="px-1.5 py-0.5 rounded bg-chess-card border border-chess-border text-gray-300">F</kbd> Çevir, <kbd className="px-1.5 py-0.5 rounded bg-chess-card border border-chess-border text-gray-300">M</kbd> Ses
+      <footer className="border-t border-chess-border/60 py-3 text-center text-xs text-gray-500 bg-chess-surface/40 flex flex-col sm:flex-row items-center justify-between px-6 gap-3">
+        <div className="flex items-center gap-2">
+          <span>Klavye: <kbd className="px-1.5 py-0.5 rounded bg-chess-card border border-chess-border text-gray-300">←</kbd> <kbd className="px-1.5 py-0.5 rounded bg-chess-card border border-chess-border text-gray-300">→</kbd>, <kbd className="px-1.5 py-0.5 rounded bg-chess-card border border-chess-border text-gray-300">Boşluk</kbd> Oynat, <kbd className="px-1.5 py-0.5 rounded bg-chess-card border border-chess-border text-gray-300">F</kbd> Çevir</span>
         </div>
-        <button
-          type="button"
-          onClick={() => setIsDebugMode((p) => !p)}
-          className="text-amber-400 hover:text-amber-300 font-mono text-[11px] underline cursor-pointer"
-        >
-          {isDebugMode ? '🛠️ Debug Tablosunu Gizle' : '🛠️ Debug Tablosu (?debug=1)'}
-        </button>
+        
+        <div className="flex items-center gap-4 text-[11px]">
+          <span>Geliştiriciler: <a href="https://github.com/DevErennn/chess-analysis-site" target="_blank" rel="noreferrer" className="text-gray-400 hover:text-white underline">Eren UÇAR & Onuralp DURHAN</a></span>
+          {onOpenFeedback && (
+            <button
+              type="button"
+              onClick={onOpenFeedback}
+              className="text-chess-accent hover:underline cursor-pointer"
+            >
+              💬 Görüş & Öneri
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setIsDebugMode((p) => !p)}
+            className="text-amber-400 hover:text-amber-300 font-mono underline cursor-pointer"
+          >
+            {isDebugMode ? '🛠️ Debug Gizle' : '🛠️ Debug'}
+          </button>
+        </div>
       </footer>
     </div>
   );

@@ -335,6 +335,7 @@ export class StockfishService {
               curMate = null;
             } else if (mateMatch) {
               curMate = parseInt(mateMatch[1], 10);
+              curCp = undefined;
             }
 
             const pv = pvMatch ? pvMatch[1] : '';
@@ -351,12 +352,13 @@ export class StockfishService {
             }
 
             // Top line updates primary score
-            if (mpvIndex === 1 && (!isBound || lastRawCp === undefined)) {
+            if (mpvIndex === 1 && (!isBound || (lastRawCp === undefined && lastRawMate === undefined))) {
               if (curCp !== undefined) {
                 lastRawCp = curCp;
                 lastRawMate = null;
               } else if (curMate !== undefined) {
                 lastRawMate = curMate;
+                lastRawCp = undefined;
               }
               if (pv) {
                 lastPv = pv;

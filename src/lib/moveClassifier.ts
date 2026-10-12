@@ -219,6 +219,116 @@ export function verifyMaterialSacrifice(
   }
 }
 
+export interface HangingPieceResult {
+  hasHanging: boolean;
+  hangingPieceType?: string;
+  hangingPieceName?: string;
+  hangingSquare?: string;
+  materialDeficit?: number;
+  isPassive?: boolean;
+}
+
+const PIECE_NAMES_TR: Record<string, string> = {
+  p: 'Piyon',
+  n: 'At',
+  b: 'Fil',
+  r: 'Kale',
+  q: 'Vezir',
+};
+
+/**
+ * Pasif ve Aktif Feda Tespiti (Hanging Piece Check):
+ * Hamle yapıldıktan sonra rakibin yasal hamlelerini tarayarak,
+ * oyuncunun değerli bir taşını (Vezir, Kale, Fil/At) kasten boşta (hanging) bırakıp bırakmadığını
+ * veya daha düşük değerli bir taşa feda edip etmediğini kontrol eder.
+ * 
+ * Örnek: Donald Byrne vs Bobby Fischer (17... Be6!!):
+ * Fil e6'ya oynandığında b6'daki Vezir bilerek boşta bırakılmıştır (Pasif Feda).
+ */
+export function hasHangingPiece(
+  fenBefore: string,
+  from: string,
+  to: string
+): HangingPieceResult {
+  try {
+    const chess = new Chess(fenBefore);
+    const movingPiece = chess.get(from as any);
+    if (!movingPiece) return { hasHanging: false };
+
+    // 1. Hamleyi tahtada oynat
+    const moveRes = chess.move({ from, to, promotion: 'q' });
+    if (!moveRes) return { hasHanging: false };
+
+    // 2. Rakibin yasal hamlelerini çıkar
+    const opponentMoves = chess.moves({ verbose: true });
+
+    let bestHanging: HangingPieceResult = { hasHanging: false };
+    let maxDeficit = 0;
+
+    const values: Record<string, number> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
+
+    for (const oppMove of opponentMoves) {
+      if (!oppMove.captured) continue;
+
+      const capturedType = oppMove.captured;
+      const capturedVal = values[capturedType] || 0;
+      const attackerVal = values[oppMove.piece] || 0;
+
+      // Sadece değerli taşlar (At, Fil, Kale, Vezir)
+      if (capturedVal < 3) continue;
+
+      // Rakibin bu taşı almasını simüle et
+      const sim = new Chess(chess.fen());
+      sim.move(oppMove);
+
+      // Bizim bu kareyi geri alma (recapture) imkanımız var mı?
+      const ourResponses = sim.moves({ verbose: true });
+      const canRecapture = ourResponses.some(
+        (r) => r.to === oppMove.to && r.captured
+      );
+
+      let netDeficit = 0;
+
+      if (!canRecapture) {
+        // Taş tamamen bedavaya (hanging / undefended) bırakılmış
+        netDeficit = capturedVal;
+      } else {
+        // Geri alınabiliyor ama rakip daha düşük değerli bir taşla aldı (örn: Fil Veziri aldı -> 9 - 3 = 6)
+        if (capturedVal > attackerVal) {
+          netDeficit = capturedVal - attackerVal;
+        }
+      }
+
+      // En az 2 piyon değerinde kayıp varsa (feda eşiği)
+      if (netDeficit >= CLASSIFICATION_THRESHOLDS.BRILLIANT_MIN_MATERIAL_SACRIFICE && netDeficit > maxDeficit) {
+        maxDeficit = netDeficit;
+        const isPassive = oppMove.to !== to;
+        bestHanging = {
+          hasHanging: true,
+          hangingPieceType: capturedType,
+          hangingPieceName: PIECE_NAMES_TR[capturedType] || 'Taş',
+          hangingSquare: oppMove.to,
+          materialDeficit: netDeficit,
+          isPassive,
+        };
+      }
+    }
+
+    return bestHanging;
+  } catch {
+    return { hasHanging: false };
+  }
+}
+
+/**
+ * Normalizes SAN notation for robust engine move matching.
+ * Strips checks (+), mates (#), annotations (!, ?), and promotion equality (=).
+ */
+export function cleanSan(san?: string): string {
+  if (!san) return '';
+  return san.replace(/[+#?!]/g, '').replace(/=/g, '').trim().toLowerCase();
+}
+
 /**
  * Calculates MultiPV gap between best move and 2nd best move from mover's POV.
  */
@@ -274,18 +384,49 @@ export function classifyMove(
   // ---------------------------------------------------------------
   const playedUci = `${from}${to}`.toLowerCase();
   const engineBestUci = (evalBefore.bestMoveUci || '').toLowerCase();
+  const normMoveSan = cleanSan(moveSan);
+  const normBestSan = cleanSan(evalBefore.bestMoveSan);
 
   // Strategy 1: UCI from/to square match (4 chars)
   const uciMatch = engineBestUci.length >= 4 && playedUci === engineBestUci.slice(0, 4);
 
-  // Strategy 2: SAN match with bestMoveSan
-  const sanMatch = !!(evalBefore.bestMoveSan && evalBefore.bestMoveSan === moveSan);
+  // Strategy 2: Normalized SAN match with bestMoveSan (ignoring +, #, !, =)
+  const sanMatch = !!(normBestSan && normBestSan === normMoveSan);
 
-  // Strategy 3: Check if played move is line 1 in MultiPV
-  const line1Uci = (evalBefore.lines?.[0]?.bestMoveUci || '').toLowerCase();
-  const multiPvMatch = line1Uci.length >= 4 && playedUci === line1Uci.slice(0, 4);
+  // Strategy 3: Check all MultiPV candidate lines
+  let candidateMatch = false;
+  if (evalBefore.lines && evalBefore.lines.length > 0) {
+    const topCp = evalBefore.lines[0]?.cp ?? 0;
+    const topMoverCp = color === 'w' ? topCp : -topCp;
 
-  const isBestMove = uciMatch || sanMatch || multiPvMatch;
+    for (let idx = 0; idx < evalBefore.lines.length; idx++) {
+      const line = evalBefore.lines[idx];
+      const lineUci = (line.bestMoveUci || '').toLowerCase();
+      const lineSan = cleanSan(line.bestMoveSan);
+
+      const isLineHit =
+        (lineUci.length >= 4 && playedUci === lineUci.slice(0, 4)) ||
+        (lineSan && lineSan === normMoveSan);
+
+      if (isLineHit) {
+        if (idx === 0) {
+          candidateMatch = true;
+          break;
+        } else {
+          // If candidate line is within 35cp of Line 1, treat as near-best candidate
+          const lineCp = line.cp ?? 0;
+          const lineMoverCp = color === 'w' ? lineCp : -lineCp;
+          const cpDiff = Math.max(0, topMoverCp - lineMoverCp);
+          if (cpDiff <= 35) {
+            candidateMatch = true;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  const isBestMove = uciMatch || sanMatch || candidateMatch;
 
   // ---------------------------------------------------------------
   // Win loss: 0 if best move, otherwise max(0, before - after)
@@ -326,9 +467,14 @@ export function classifyMove(
     winAfter >= CLASSIFICATION_THRESHOLDS.BRILLIANT_MIN_WIN_AFTER
   ) {
     const sac = verifyMaterialSacrifice(fenBefore, from, to, evalBefore.pv);
-    if (sac.isSacrifice) {
+    const hanging = hasHangingPiece(fenBefore, from, to);
+
+    if (sac.isSacrifice || hanging.hasHanging) {
       classification = 'brilliant';
-      comment = `‼️ Göz Alıcı Hamle: ${sac.sacrificedPieceName || 'Taş'} fedası (${sac.sacrificedSquare || to} karesinde)! Taktiksel üstünlük sağlayan cesur devam yolu.`;
+      const pieceName = hanging.hangingPieceName || sac.sacrificedPieceName || 'Taş';
+      const square = hanging.hangingSquare || sac.sacrificedSquare || to;
+      const typeLabel = hanging.isPassive ? 'Pasif Feda' : 'Feda';
+      comment = `‼️ Göz Alıcı ${typeLabel} (Brilliant): ${pieceName} fedası (${square} karesinde)! Taktiksel üstünlük sağlayan dahiyane devam yolu.`;
       return {
         classification,
         winChanceBefore: winBefore,
@@ -344,21 +490,32 @@ export function classifyMove(
 
   // ---------------------------------------------------------------
   // 3. Great Move (!) — best move that dramatically turns the game
-  //    OR the only move that maintains a big advantage (gap >= 150cp)
+  //    OR the only move that maintains a decisive advantage/holds draw (gap >= 120cp)
+  //    OR critical tactical breakthrough (promotion, pin, counter-check)
   // ---------------------------------------------------------------
   if (isBestMove) {
     const turnedPosition =
-      winBefore < CLASSIFICATION_THRESHOLDS.GREAT_TURN_AROUND_BEFORE &&
-      winAfter >= CLASSIFICATION_THRESHOLDS.GREAT_TURN_AROUND_AFTER;
-    const onlyWinningMove =
-      multiPvGap >= CLASSIFICATION_THRESHOLDS.GREAT_MIN_GAP_CP &&
-      winAfter >= 60.0;
+      winBefore <= CLASSIFICATION_THRESHOLDS.GREAT_TURN_AROUND_BEFORE &&
+      winAfter >= 50.0 &&
+      winAfter - winBefore >= 8.0;
 
-    if (turnedPosition || onlyWinningMove) {
+    const onlyWinningMove =
+      multiPvGap >= 120 &&
+      winAfter >= 45.0;
+
+    const isPromotionOrCheck = moveSan.includes('=') || moveSan.includes('+');
+    const tacticalGreatMove =
+      isPromotionOrCheck &&
+      multiPvGap >= 80 &&
+      winAfter >= 55.0;
+
+    if (turnedPosition || onlyWinningMove || tacticalGreatMove) {
       classification = 'great';
       comment = turnedPosition
         ? '! Pozisyonu tersine çeviren harika ve kritik hamle!'
-        : '! Taktiksel üstünlüğü koruyan tek ve kusursuz hamle!';
+        : onlyWinningMove
+        ? '! Taktiksel üstünlüğü koruyan tek ve kusursuz hamle!'
+        : '! Vezir çıkma veya şah çekişiyle kazancı perçinleyen harika hamle!';
       return {
         classification,
         winChanceBefore: winBefore,
@@ -400,16 +557,23 @@ export function classifyMove(
     mateBefore !== null &&
     mateBefore !== undefined &&
     (color === 'w' ? mateBefore > 0 : mateBefore < 0);
-  const threwAwayMate = isWinningMateBefore && winAfter < 80.0;
-  const leadCollapsing = winBefore >= 70.0 && winAfter <= 35.0;
+  const threwAwayMate = isWinningMateBefore && winAfter < 75.0;
+  const leadCollapsing = winBefore >= 70.0 && winAfter <= 40.0;
+  const isStillDecisivelyWinning = winAfter >= 65.0;
 
-  if (winLoss > CLASSIFICATION_THRESHOLDS.MISTAKE_MAX_LOSS || threwAwayMate || leadCollapsing) {
+  // A move CANNOT be a blunder if the player is still in a decisive winning position (winAfter >= 65%)
+  if (!isStillDecisivelyWinning && (winLoss > CLASSIFICATION_THRESHOLDS.MISTAKE_MAX_LOSS || threwAwayMate || leadCollapsing)) {
     classification = 'blunder';
     comment = threwAwayMate
       ? 'Büyük hata! Zorunlu mat kazancı kaçırıldı.'
       : leadCollapsing
       ? 'Büyük hata! Belirgin kazanç pozisyonu kaybedilen konuma düştü.'
       : 'Büyük hata (Gaf)! Rakibe ciddi bir üstünlük veya taktiksel fırsat verdi.';
+  } else if (winLoss > CLASSIFICATION_THRESHOLDS.MISTAKE_MAX_LOSS) {
+    classification = 'mistake';
+    comment = isStillDecisivelyWinning
+      ? 'Hata: Daha hızlı kazandıran bir yol vardı, ancak pozisyon hala belirgin üstün.'
+      : 'Pozisyonel veya taktiksel hata, daha iyi bir devam yolu vardı.';
   } else if (winLoss > CLASSIFICATION_THRESHOLDS.INACCURACY_MAX_LOSS) {
     classification = 'mistake';
     comment = 'Pozisyonel veya taktiksel hata, daha iyi bir devam yolu vardı.';

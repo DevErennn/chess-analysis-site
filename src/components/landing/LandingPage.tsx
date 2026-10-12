@@ -8,18 +8,22 @@ import {
   Target, 
   Sparkles,
   Award,
-  Swords
+  Swords,
+  MessageSquareHeart
 } from 'lucide-react';
+import { GithubIcon } from '../common/GithubIcon';
 import { PgnInputCard } from './PgnInputCard';
 import { ChessComImporter } from './ChessComImporter';
 import { LichessImporter } from './LichessImporter';
+import { DevelopersSection } from '../common/DevelopersSection';
 import type { GameMetadata } from '../../types/chess';
 
 interface LandingPageProps {
   onSelectGame: (pgn: string, metadata: GameMetadata) => void;
+  onOpenFeedback?: () => void;
 }
 
-export const LandingPage: React.FC<LandingPageProps> = ({ onSelectGame }) => {
+export const LandingPage: React.FC<LandingPageProps> = ({ onSelectGame, onOpenFeedback }) => {
   const [activeTab, setActiveTab] = useState<'pgn' | 'chesscom' | 'lichess'>('pgn');
 
   return (
@@ -28,9 +32,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onSelectGame }) => {
       <header className="border-b border-chess-border/70 bg-chess-dark/80 backdrop-blur-md sticky top-0 z-30">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-chess-accent flex items-center justify-center text-chess-dark font-black text-xl shadow-md shadow-chess-accent/20">
-              ♟
-            </div>
+            <img 
+              src="/mini-logo.png" 
+              alt="Chess Review" 
+              className="w-9 h-9 rounded-xl shadow-md border border-chess-border/60 object-contain bg-chess-surface"
+            />
             <div>
               <span className="font-extrabold text-lg tracking-tight text-white flex items-center gap-1.5">
                 Chess<span className="text-chess-accent">Review</span>
@@ -46,12 +52,26 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onSelectGame }) => {
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               <span>Stockfish Hazırlığı: v16 WASM</span>
             </div>
+
+            {onOpenFeedback && (
+              <button
+                type="button"
+                onClick={onOpenFeedback}
+                className="px-3 py-1.5 rounded-lg bg-chess-surface hover:bg-chess-card border border-chess-border text-chess-accent hover:text-white transition-colors flex items-center gap-1.5 font-medium cursor-pointer"
+                title="Görüş ve Önerileriniz"
+              >
+                <MessageSquareHeart className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Görüş & Öneri</span>
+              </button>
+            )}
+
             <a
-              href="https://github.com"
+              href="https://github.com/DevErennn/chess-analysis-site"
               target="_blank"
               rel="noreferrer"
               className="px-3 py-1.5 rounded-lg bg-chess-surface hover:bg-chess-card border border-chess-border text-gray-300 hover:text-white transition-colors flex items-center gap-1.5 font-medium"
             >
+              <GithubIcon className="w-3.5 h-3.5 text-gray-400" />
               <span>GitHub</span>
             </a>
           </div>
@@ -193,18 +213,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onSelectGame }) => {
         </section>
       </main>
 
-      {/* Footer */}
-      <footer className="border-t border-chess-border/60 bg-chess-dark py-6 mt-12 text-center text-xs text-gray-500">
-        <div className="max-w-5xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <span>♟ ChessReview</span>
-            <span>•</span>
-            <span>Açık Kaynak Satranç Analiz Platformu</span>
-          </div>
-          <div>
-            <span>Tüm hakları saklıdır © 2026. Chess.com ve Lichess ile bağlantısı yoktur.</span>
-          </div>
-        </div>
+      {/* Geliştiriciler & Footer */}
+      <footer className="bg-chess-dark pb-8">
+        <DevelopersSection onOpenFeedback={onOpenFeedback} />
       </footer>
     </div>
   );

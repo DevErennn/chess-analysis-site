@@ -119,6 +119,14 @@ Turning Point Detection, Phase Analysis & Interactive Practice
 
 ---
 
+## 👥 Geliştiriciler (Developers)
+
+- **Eren UÇAR** - Full-Stack Geliştirici & Satranç Motoru Mimarı ([GitHub](https://github.com/DevErennn/chess-analysis-site))
+- **Onuralp DURHAN** - Full-Stack Geliştirici & UI/UX Tasarım ([GitHub](https://github.com/DevErennn/chess-analysis-site))
+
+---
+
 ## 📄 License
 
 This project is open-source and available under the [MIT License](LICENSE).
+

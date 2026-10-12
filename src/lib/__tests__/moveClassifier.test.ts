@@ -327,4 +327,122 @@ describe('Accuracy calculations (Lichess model)', () => {
     expect(realAcc.black).toBeLessThan(75);
     expect(realAcc.black).toBeGreaterThan(45);
   });
+
+  it('classifies a critical Queen promotion with check as great or best, never blunder', () => {
+    // Pawn promotes to queen on d8 with check
+    const fenBefore = '3r2k1/3P1ppp/8/8/8/8/8/4K3 w - - 0 1';
+    const fenAfter = '3Q2k1/5ppp/8/8/8/8/8/4K3 b - - 0 1';
+    const evalBefore = {
+      cp: 550,
+      mate: null,
+      depth: 14,
+      bestMoveUci: 'd7d8q',
+      bestMoveSan: 'd8=Q', // Note: bestMoveSan without '+'
+      lines: [
+        { multipv: 1, cp: 550, depth: 14, pv: 'd7d8q d8d8', bestMoveUci: 'd7d8q', bestMoveSan: 'd8=Q' },
+        { multipv: 2, cp: 120, depth: 14, pv: 'e1e2 d8d7', bestMoveUci: 'e1e2', bestMoveSan: 'Ke2' },
+      ],
+    };
+    const evalAfter = {
+      cp: 9990,
+      mate: 1,
+      depth: 14,
+      bestMoveUci: '',
+      bestMoveSan: '',
+    };
+
+    const res = classifyMove(
+      'd8=Q+',
+      'd7',
+      'd8',
+      'w',
+      fenBefore,
+      fenAfter,
+      evalBefore,
+      evalAfter,
+      40,
+      []
+    );
+
+    expect(['great', 'best', 'brilliant']).toContain(res.classification);
+    expect(res.classification).not.toBe('blunder');
+  });
+
+  it('protects decisively winning positions from false blunders', () => {
+    // Position is +600 (+6 pawns). Move drops to +250 (+2.5 pawns). Win prob drops 27%.
+    // In Chess.com, keeping a decisive +2.5 advantage is NEVER a blunder.
+    const fenBefore = '4k3/8/8/8/8/8/4P3/4K3 w - - 0 1';
+    const fenAfter = '4k3/8/8/8/8/8/8/4K3 b - - 0 1';
+    const evalBefore = {
+      cp: 600,
+      mate: null,
+      depth: 14,
+      bestMoveUci: 'e2e4',
+      bestMoveSan: 'e4',
+    };
+    const evalAfter = {
+      cp: 250,
+      mate: null,
+      depth: 14,
+      bestMoveUci: 'e8e7',
+      bestMoveSan: 'Ke7',
+    };
+
+    const res = classifyMove(
+      'Kd1',
+      'e1',
+      'd1',
+      'w',
+      fenBefore,
+      fenAfter,
+      evalBefore,
+      evalAfter,
+      10,
+      ['Kd1']
+    );
+
+    // Mover is still at +250 (win chance ~71% > 65%), so it should NOT be blunder
+    expect(res.classification).toBe('mistake');
+    expect(res.classification).not.toBe('blunder');
+  });
+
+  it('classifies game-saving or turnaround move as great', () => {
+    // Position was losing (-300 cp, winBefore ~25%), played move saves to equal/slight edge (winAfter 55%)
+    const fenBefore = '8/8/8/8/8/8/8/k3K3 w - - 0 1';
+    const fenAfter = '8/8/8/8/8/8/8/k3K3 b - - 0 1';
+    const evalBefore = {
+      cp: -300,
+      mate: null,
+      depth: 14,
+      bestMoveUci: 'e1d2',
+      bestMoveSan: 'Kd2',
+      lines: [
+        { multipv: 1, cp: 50, depth: 14, pv: 'e1d2', bestMoveUci: 'e1d2', bestMoveSan: 'Kd2' },
+        { multipv: 2, cp: -400, depth: 14, pv: 'e1f2', bestMoveUci: 'e1f2', bestMoveSan: 'Kf2' },
+      ],
+    };
+    const evalAfter = {
+      cp: 50,
+      mate: null,
+      depth: 14,
+      bestMoveUci: 'a1b2',
+      bestMoveSan: 'Kb2',
+    };
+
+    const res = classifyMove(
+      'Kd2',
+      'e1',
+      'd2',
+      'w',
+      fenBefore,
+      fenAfter,
+      evalBefore,
+      evalAfter,
+      20,
+      []
+    );
+
+    expect(res.classification).toBe('great');
+  });
 });
+
