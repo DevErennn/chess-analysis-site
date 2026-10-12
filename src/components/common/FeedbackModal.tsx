@@ -17,7 +17,7 @@ interface FeedbackModalProps {
   onClose: () => void;
 }
 
-const DISCORD_WEBHOOK_URL = 'https://discord.com/api/webhooks/1559256544535646302/-G1Wc4tgUY9TZn4ioYA6VnnQAKlTIxEJYCik5NX_D0QtKEDrQLW9IdFSbM4OxuOzbFys';
+const DISCORD_WEBHOOK_URL = import.meta.env.VITE_DISCORD_WEBHOOK_URL || '';
 
 export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose }) => {
   const [feedbackType, setFeedbackType] = useState<'suggestion' | 'bug' | 'praise' | 'other'>('suggestion');
@@ -51,72 +51,74 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
       // Ignore storage errors
     }
 
-    // 2. Dispatch to Discord Webhook
-    try {
-      const typeLabels: Record<string, string> = {
-        suggestion: '💡 Yeni Özellik / Öneri',
-        bug: '🐛 Hata Bildirimi',
-        praise: '✨ Beğeni / Teşekkür',
-        other: '💬 Genel Görüş',
-      };
+    // 2. Dispatch to Discord Webhook (if configured)
+    if (DISCORD_WEBHOOK_URL) {
+      try {
+        const typeLabels: Record<string, string> = {
+          suggestion: '💡 Yeni Özellik / Öneri',
+          bug: '🐛 Hata Bildirimi',
+          praise: '✨ Beğeni / Teşekkür',
+          other: '💬 Genel Görüş',
+        };
 
-      const typeColors: Record<string, number> = {
-        suggestion: 0x81b64c, // Green
-        bug: 0xfa412d,        // Red
-        praise: 0x26c2a3,     // Cyan / Turquoise
-        other: 0x5c8bb0,      // Blue
-      };
+        const typeColors: Record<string, number> = {
+          suggestion: 0x81b64c, // Green
+          bug: 0xfa412d,        // Red
+          praise: 0x26c2a3,     // Cyan / Turquoise
+          other: 0x5c8bb0,      // Blue
+        };
 
-      const payload = {
-        username: 'Chess Review Feedback Bot',
-        avatar_url: 'https://raw.githubusercontent.com/DevErennn/chess-analysis-site/main/public/mini-logo.png',
-        embeds: [
-          {
-            title: `♟️ ${typeLabels[feedbackType] || feedbackType}`,
-            description: message.trim(),
-            color: typeColors[feedbackType] || 0x81b64c,
-            fields: [
-              {
-                name: '👤 İletişim / Kullanıcı',
-                value: contact.trim() || 'Belirtilmedi',
-                inline: true,
+        const payload = {
+          username: 'Chess Review Bildirim',
+          avatar_url: 'https://raw.githubusercontent.com/DevErennn/chess-analysis-site/main/public/mini-logo.png',
+          embeds: [
+            {
+              title: `♟️ ${typeLabels[feedbackType] || feedbackType}`,
+              description: message.trim(),
+              color: typeColors[feedbackType] || 0x81b64c,
+              fields: [
+                {
+                  name: '👤 İletişim / Kullanıcı',
+                  value: contact.trim() || 'Belirtilmedi',
+                  inline: true,
+                },
+                {
+                  name: '🏷️ Kategori',
+                  value: typeLabels[feedbackType] || feedbackType,
+                  inline: true,
+                },
+                {
+                  name: '⏰ Tarih',
+                  value: new Date().toLocaleString('tr-TR'),
+                  inline: true,
+                },
+              ],
+              footer: {
+                text: 'Chess Review • DevErennn & DevOnurrr',
               },
-              {
-                name: '🏷️ Kategori',
-                value: typeLabels[feedbackType] || feedbackType,
-                inline: true,
-              },
-              {
-                name: '⏰ Tarih',
-                value: new Date().toLocaleString('tr-TR'),
-                inline: true,
-              },
-            ],
-            footer: {
-              text: 'Chess Review • Eren UÇAR & Onuralp DURHAN',
+              timestamp: new Date().toISOString(),
             },
-            timestamp: new Date().toISOString(),
+          ],
+        };
+
+        const response = await fetch(DISCORD_WEBHOOK_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
           },
-        ],
-      };
+          body: JSON.stringify(payload),
+        });
 
-      const response = await fetch(DISCORD_WEBHOOK_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (response.ok || response.status === 204) {
-        setDiscordDelivered(true);
+        if (response.ok || response.status === 204) {
+          setDiscordDelivered(true);
+        }
+      } catch (err) {
+        console.warn('Discord webhook notification notice:', err);
       }
-    } catch (err) {
-      console.warn('Discord webhook network notification:', err);
-    } finally {
-      setIsSending(false);
-      setSubmitted(true);
     }
+
+    setIsSending(false);
+    setSubmitted(true);
   };
 
   const handleClose = () => {
@@ -265,7 +267,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
                 <div className="p-3 rounded-xl bg-chess-surface/70 border border-chess-border/60 text-[11px] text-gray-400 leading-relaxed flex items-center gap-2">
                   <span className="text-chess-accent text-sm">💡</span>
                   <span>
-                    Geri bildirimler doğrudan geliştiricilerimiz <strong className="text-gray-200">Eren UÇAR</strong> ve <strong className="text-gray-200">Onuralp DURHAN</strong> tarafından incelenmektedir.
+                    Geri bildirimler doğrudan geliştiricilerimiz <strong className="text-gray-200">DevErennn</strong> ve <strong className="text-gray-200">DevOnurrr</strong> tarafından incelenmektedir.
                   </span>
                 </div>
 
@@ -330,7 +332,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
                   </div>
                 )}
                 <p className="text-xs text-gray-300 max-w-sm mx-auto mt-2 leading-relaxed">
-                  Değerli görüş ve önerileriniz için çok teşekkür ederiz. Eren UÇAR & Onuralp DURHAN olarak mesajınızı inceleyeceğiz.
+                  Değerli görüş ve önerileriniz için çok teşekkür ederiz. DevErennn & DevOnurrr olarak mesajınızı inceleyeceğiz.
                 </p>
               </div>
 

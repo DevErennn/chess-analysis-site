@@ -30,16 +30,16 @@ export const DevelopersSection: React.FC<DevelopersSectionProps> = ({
 
         {/* Developer Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl mx-auto">
-          {/* Developer 1: Eren UÇAR */}
+          {/* Developer 1: DevErennn */}
           <div className="relative group p-4 sm:p-5 rounded-2xl bg-chess-surface/70 hover:bg-chess-card border border-chess-border hover:border-chess-accent/50 transition-all duration-300 shadow-lg">
             <div className="flex items-center gap-3.5">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-chess-accent to-emerald-500 flex items-center justify-center text-chess-dark font-black text-base shadow-md shrink-0 group-hover:scale-105 transition-transform">
-                EU
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-chess-accent to-emerald-500 flex items-center justify-center text-chess-dark font-black text-sm shadow-md shrink-0 group-hover:scale-105 transition-transform">
+                DE
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <h3 className="font-extrabold text-sm sm:text-base text-white tracking-tight truncate">
-                    Eren UÇAR
+                    DevErennn
                   </h3>
                   <span className="text-[10px] px-1.5 py-0.2 rounded bg-chess-accent/20 text-chess-accent font-bold uppercase tracking-wide">
                     Dev
@@ -68,16 +68,16 @@ export const DevelopersSection: React.FC<DevelopersSectionProps> = ({
             </div>
           </div>
 
-          {/* Developer 2: Onuralp DURHAN */}
+          {/* Developer 2: DevOnurrr */}
           <div className="relative group p-4 sm:p-5 rounded-2xl bg-chess-surface/70 hover:bg-chess-card border border-chess-border hover:border-cyan-400/50 transition-all duration-300 shadow-lg">
             <div className="flex items-center gap-3.5">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center text-chess-dark font-black text-base shadow-md shrink-0 group-hover:scale-105 transition-transform">
-                OD
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-cyan-400 to-blue-500 flex items-center justify-center text-chess-dark font-black text-sm shadow-md shrink-0 group-hover:scale-105 transition-transform">
+                DO
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <h3 className="font-extrabold text-sm sm:text-base text-white tracking-tight truncate">
-                    Onuralp DURHAN
+                    DevOnurrr
                   </h3>
                   <span className="text-[10px] px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-400 font-bold uppercase tracking-wide">
                     Dev
@@ -150,7 +150,7 @@ export const DevelopersSection: React.FC<DevelopersSectionProps> = ({
             <Heart className="w-3 h-3 text-red-500 fill-red-500 inline" />
           </div>
           <div>
-            <span>© 2026 Eren UÇAR & Onuralp DURHAN. Tüm hakları saklıdır.</span>
+            <span>© 2026 DevErennn & DevOnurrr. Tüm hakları saklıdır.</span>
           </div>
         </div>
       </div>

@@ -1,12 +1,12 @@
 import React, { useState, useRef, useMemo } from 'react';
-import { 
-  X, 
-  Download, 
-  Copy, 
-  Check, 
-  Share2, 
-  Flame, 
-  Smartphone, 
+import {
+  X,
+  Download,
+  Copy,
+  Check,
+  Share2,
+  Flame,
+  Smartphone,
   Square,
   MessageCircle
 } from 'lucide-react';
@@ -257,7 +257,7 @@ export const MoveShareModal: React.FC<MoveShareModalProps> = ({
 
     ctx.fillStyle = '#64748b';
     ctx.font = '500 17px Inter, sans-serif';
-    ctx.fillText('Geliştiriciler: Eren UÇAR & Onuralp DURHAN • github.com/DevErennn/chess-analysis-site', width / 2, footerY + 28);
+    ctx.fillText('Geliştiriciler: DevErennn & DevOnurrr • github.com/DevErennn/chess-analysis-site', width / 2, footerY + 28);
 
     return canvas;
   };
@@ -317,7 +317,7 @@ export const MoveShareModal: React.FC<MoveShareModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-      <div 
+      <div
         className="relative w-full max-w-xl bg-chess-card border border-chess-border rounded-2xl shadow-2xl max-h-[92vh] flex flex-col text-gray-100 overflow-hidden"
         role="dialog"
         aria-modal="true"
@@ -363,11 +363,10 @@ export const MoveShareModal: React.FC<MoveShareModalProps> = ({
               <button
                 type="button"
                 onClick={() => setAspectRatio('1:1')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition-colors cursor-pointer ${
-                  aspectRatio === '1:1'
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition-colors cursor-pointer ${aspectRatio === '1:1'
                     ? 'bg-chess-card text-white border border-chess-border shadow-sm text-chess-accent'
                     : 'text-gray-400 hover:text-white'
-                }`}
+                  }`}
               >
                 <Square className="w-3.5 h-3.5" />
                 <span>1:1 Kare (Post)</span>
@@ -376,11 +375,10 @@ export const MoveShareModal: React.FC<MoveShareModalProps> = ({
               <button
                 type="button"
                 onClick={() => setAspectRatio('9:16')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition-colors cursor-pointer ${
-                  aspectRatio === '9:16'
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition-colors cursor-pointer ${aspectRatio === '9:16'
                     ? 'bg-chess-card text-white border border-chess-border shadow-sm text-chess-accent'
                     : 'text-gray-400 hover:text-white'
-                }`}
+                  }`}
               >
                 <Smartphone className="w-3.5 h-3.5" />
                 <span>9:16 Dikey (Hikaye)</span>
@@ -403,7 +401,7 @@ export const MoveShareModal: React.FC<MoveShareModalProps> = ({
             <div className="w-full max-w-sm p-3 rounded-xl bg-chess-card border border-chess-border/80 flex items-center justify-between shadow-md">
               <div className="flex items-center gap-2">
                 <span className="text-lg font-black text-white font-mono">{moveFullText}</span>
-                <span 
+                <span
                   className="px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider"
                   style={{ backgroundColor: `${classConfig.color}25`, color: classConfig.color }}
                 >
@@ -426,7 +424,7 @@ export const MoveShareModal: React.FC<MoveShareModalProps> = ({
             {/* Branding Footer */}
             <div className="text-[11px] text-gray-500 pt-1 border-t border-chess-border/40 w-full flex items-center justify-between">
               <span className="text-chess-accent font-semibold">♟️ Chess Review</span>
-              <span>Eren UÇAR & Onuralp DURHAN</span>
+              <span>DevErennn & DevOnurrr</span>
             </div>
           </div>
 

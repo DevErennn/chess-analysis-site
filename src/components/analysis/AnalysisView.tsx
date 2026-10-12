@@ -1055,7 +1055,7 @@ export const AnalysisView: React.FC<AnalysisViewProps> = ({
         </div>
         
         <div className="flex items-center gap-4 text-[11px]">
-          <span>Geliştiriciler: <a href="https://github.com/DevErennn/chess-analysis-site" target="_blank" rel="noreferrer" className="text-gray-400 hover:text-white underline">Eren UÇAR & Onuralp DURHAN</a></span>
+          <span>Geliştiriciler: <a href="https://github.com/DevErennn/chess-analysis-site" target="_blank" rel="noreferrer" className="text-gray-400 hover:text-white underline">DevErennn & DevOnurrr</a></span>
           {onOpenFeedback && (
             <button
               type="button"
