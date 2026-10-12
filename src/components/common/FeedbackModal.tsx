@@ -7,7 +7,8 @@ import {
   Sparkles, 
   Bug, 
   Lightbulb, 
-  HeartHandshake 
+  HeartHandshake,
+  Loader2
 } from 'lucide-react';
 import { GithubIcon } from './GithubIcon';
 
@@ -16,37 +17,111 @@ interface FeedbackModalProps {
   onClose: () => void;
 }
 
+const DISCORD_WEBHOOK_URL = 'https://discord.com/api/webhooks/1559256544535646302/-G1Wc4tgUY9TZn4ioYA6VnnQAKlTIxEJYCik5NX_D0QtKEDrQLW9IdFSbM4OxuOzbFys';
+
 export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose }) => {
   const [feedbackType, setFeedbackType] = useState<'suggestion' | 'bug' | 'praise' | 'other'>('suggestion');
   const [message, setMessage] = useState('');
   const [contact, setContact] = useState('');
+  const [isSending, setIsSending] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [discordDelivered, setDiscordDelivered] = useState(false);
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!message.trim()) return;
+    if (!message.trim() || isSending) return;
 
-    // Store in localStorage
+    setIsSending(true);
+
+    const newFeedback = {
+      type: feedbackType,
+      message: message.trim(),
+      contact: contact.trim(),
+      date: new Date().toISOString(),
+    };
+
+    // 1. Store in localStorage as backup
     try {
       const existing = JSON.parse(localStorage.getItem('chess_review_user_feedbacks') || '[]');
-      existing.push({
-        type: feedbackType,
-        message: message.trim(),
-        contact: contact.trim(),
-        date: new Date().toISOString(),
-      });
+      existing.push(newFeedback);
       localStorage.setItem('chess_review_user_feedbacks', JSON.stringify(existing));
     } catch {
       // Ignore storage errors
     }
 
-    setSubmitted(true);
+    // 2. Dispatch to Discord Webhook
+    try {
+      const typeLabels: Record<string, string> = {
+        suggestion: '💡 Yeni Özellik / Öneri',
+        bug: '🐛 Hata Bildirimi',
+        praise: '✨ Beğeni / Teşekkür',
+        other: '💬 Genel Görüş',
+      };
+
+      const typeColors: Record<string, number> = {
+        suggestion: 0x81b64c, // Green
+        bug: 0xfa412d,        // Red
+        praise: 0x26c2a3,     // Cyan / Turquoise
+        other: 0x5c8bb0,      // Blue
+      };
+
+      const payload = {
+        username: 'Chess Review Feedback Bot',
+        avatar_url: 'https://raw.githubusercontent.com/DevErennn/chess-analysis-site/main/public/mini-logo.png',
+        embeds: [
+          {
+            title: `♟️ ${typeLabels[feedbackType] || feedbackType}`,
+            description: message.trim(),
+            color: typeColors[feedbackType] || 0x81b64c,
+            fields: [
+              {
+                name: '👤 İletişim / Kullanıcı',
+                value: contact.trim() || 'Belirtilmedi',
+                inline: true,
+              },
+              {
+                name: '🏷️ Kategori',
+                value: typeLabels[feedbackType] || feedbackType,
+                inline: true,
+              },
+              {
+                name: '⏰ Tarih',
+                value: new Date().toLocaleString('tr-TR'),
+                inline: true,
+              },
+            ],
+            footer: {
+              text: 'Chess Review • Eren UÇAR & Onuralp DURHAN',
+            },
+            timestamp: new Date().toISOString(),
+          },
+        ],
+      };
+
+      const response = await fetch(DISCORD_WEBHOOK_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (response.ok || response.status === 204) {
+        setDiscordDelivered(true);
+      }
+    } catch (err) {
+      console.warn('Discord webhook network notification:', err);
+    } finally {
+      setIsSending(false);
+      setSubmitted(true);
+    }
   };
 
   const handleClose = () => {
     setSubmitted(false);
+    setIsSending(false);
     setMessage('');
     setContact('');
     onClose();
@@ -216,11 +291,20 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
                     </button>
                     <button
                       type="submit"
-                      disabled={!message.trim()}
+                      disabled={!message.trim() || isSending}
                       className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-chess-accent hover:bg-chess-accent/90 text-chess-dark text-xs font-bold transition-all shadow-md shadow-chess-accent/20 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                     >
-                      <Send className="w-3.5 h-3.5" />
-                      <span>Gönder</span>
+                      {isSending ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>İletiliyor...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Send className="w-3.5 h-3.5" />
+                          <span>Gönder</span>
+                        </>
+                      )}
                     </button>
                   </div>
                 </div>
@@ -234,8 +318,19 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
               </div>
               <div>
                 <h4 className="text-xl font-black text-white">Görüşünüz İletildi!</h4>
+                {discordDelivered ? (
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 mt-2 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 text-[11px] font-semibold">
+                    <Sparkles className="w-3 h-3 text-indigo-400" />
+                    <span>Discord Webhook ile geliştiricilere ulaştırıldı ✨</span>
+                  </div>
+                ) : (
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 mt-2 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[11px] font-semibold">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                    <span>Geri bildiriminiz kaydedildi ✨</span>
+                  </div>
+                )}
                 <p className="text-xs text-gray-300 max-w-sm mx-auto mt-2 leading-relaxed">
-                  Değerli görüş ve önerileriniz için çok teşekkür ederiz. Eren UÇAR & Onuralp DURHAN olarak bildirimlerinizi dikkate alacağız.
+                  Değerli görüş ve önerileriniz için çok teşekkür ederiz. Eren UÇAR & Onuralp DURHAN olarak mesajınızı inceleyeceğiz.
                 </p>
               </div>
 
