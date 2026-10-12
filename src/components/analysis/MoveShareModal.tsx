@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import type { GameMetadata, MoveAnalysis } from '../../types/chess';
 import { CLASSIFICATION_CONFIG } from './constants';
+import { getPieceImage, preloadAllPieces } from '../../lib/chessPieceSvgs';
 
 interface MoveShareModalProps {
   isOpen: boolean;
@@ -24,7 +25,7 @@ interface MoveShareModalProps {
   orientation?: 'white' | 'black';
 }
 
-// Unicode chess piece glyphs
+// Fallback Unicode glyphs if vector piece is still loading
 const PIECE_SYMBOLS: Record<string, string> = {
   P: '♙', N: '♘', B: '♗', R: '♖', Q: '♕', K: '♔',
   p: '♟', n: '♞', b: '♝', r: '♜', q: '♛', k: '♚',
@@ -44,7 +45,14 @@ export const MoveShareModal: React.FC<MoveShareModalProps> = ({
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadSuccess, setDownloadSuccess] = useState(false);
   const [previewDataUrl, setPreviewDataUrl] = useState<string>('');
+  const [piecesLoaded, setPiecesLoaded] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    preloadAllPieces().then(() => {
+      setPiecesLoaded(true);
+    });
+  }, []);
 
   // Safe names and details
   const whiteName = metadata?.white?.name || 'Beyaz Oyuncu';
@@ -150,12 +158,12 @@ export const MoveShareModal: React.FC<MoveShareModalProps> = ({
     const boardY = ratio === '1:1' ? 230 : 360;
     const squareSize = boardSize / 8;
 
-    // Board Frame with 3D bevel & accent border
+    // Board Outer Frame with subtle rounded bevel & wood border
     ctx.fillStyle = '#211f1c';
-    ctx.fillRect(boardX - 14, boardY - 14, boardSize + 28, boardSize + 28);
-    ctx.strokeStyle = '#81b64c';
+    ctx.fillRect(boardX - 16, boardY - 16, boardSize + 32, boardSize + 32);
+    ctx.strokeStyle = '#363431';
     ctx.lineWidth = 3;
-    ctx.strokeRect(boardX - 14, boardY - 14, boardSize + 28, boardSize + 28);
+    ctx.strokeRect(boardX - 16, boardY - 16, boardSize + 32, boardSize + 32);
 
     // Parse FEN piece positions
     const cleanFen = (fen || 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR').trim();
@@ -168,7 +176,7 @@ export const MoveShareModal: React.FC<MoveShareModalProps> = ({
     let fromCenter: { x: number; y: number } | null = null;
     let toCenter: { x: number; y: number } | null = null;
 
-    // Draw 64 squares
+    // 3.1. Draw 64 squares & board coordinates
     for (let row = 0; row < 8; row++) {
       for (let col = 0; col < 8; col++) {
         const isLight = (row + col) % 2 === 0;
@@ -179,21 +187,90 @@ export const MoveShareModal: React.FC<MoveShareModalProps> = ({
         const rankNum = isFlipped ? row + 1 : 8 - row;
         const squareName = `${fileChar}${rankNum}`;
 
+        // Base square color: Classic Chess.com green/cream palette
+        ctx.fillStyle = isLight ? '#eeeed2' : '#769656';
+        ctx.fillRect(sqX, sqY, squareSize, squareSize);
+
+        // Highlight source and target squares with warm tournament highlights
         if (squareName === toSquare) {
-          ctx.fillStyle = 'rgba(247, 206, 41, 0.85)'; // Target gold
+          ctx.fillStyle = 'rgba(247, 215, 60, 0.70)'; // Target square warm gold
+          ctx.fillRect(sqX, sqY, squareSize, squareSize);
           toCenter = { x: sqX + squareSize / 2, y: sqY + squareSize / 2 };
         } else if (squareName === fromSquare) {
-          ctx.fillStyle = 'rgba(129, 182, 76, 0.80)'; // Source green
+          ctx.fillStyle = 'rgba(187, 203, 43, 0.65)'; // Source square light yellow-green
+          ctx.fillRect(sqX, sqY, squareSize, squareSize);
           fromCenter = { x: sqX + squareSize / 2, y: sqY + squareSize / 2 };
-        } else {
-          ctx.fillStyle = isLight ? '#f0d9b5' : '#b58863'; // Rich chess wood colors
         }
 
-        ctx.fillRect(sqX, sqY, squareSize, squareSize);
+        // Draw Rank & File Board Coordinates (Chess.com style)
+        ctx.font = `bold ${Math.floor(squareSize * 0.16)}px Inter, system-ui, sans-serif`;
+        const coordColor = isLight ? '#769656' : '#eeeed2';
+        ctx.fillStyle = coordColor;
+
+        // Rank number on leftmost file
+        if (col === 0) {
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'top';
+          ctx.fillText(String(rankNum), sqX + 5, sqY + 5);
+        }
+
+        // File letter on bottom row
+        if (row === 7) {
+          ctx.textAlign = 'right';
+          ctx.textBaseline = 'bottom';
+          ctx.fillText(fileChar, sqX + squareSize - 5, sqY + squareSize - 4);
+        }
       }
     }
 
-    // Place chess pieces
+    // 3.2. Draw Professional Chess.com-Style Move Arrow (BEFORE pieces, so pieces stay on top!)
+    if (fromCenter && toCenter) {
+      const dx = toCenter.x - fromCenter.x;
+      const dy = toCenter.y - fromCenter.y;
+      const distance = Math.hypot(dx, dy);
+
+      if (distance > 10) {
+        const angle = Math.atan2(dy, dx);
+        const shaftWidth = squareSize * 0.22;
+        const headWidth = squareSize * 0.54;
+        const headLength = Math.min(distance * 0.50, squareSize * 0.44);
+        const shaftLength = distance - headLength;
+
+        ctx.save();
+        ctx.translate(fromCenter.x, fromCenter.y);
+        ctx.rotate(angle);
+
+        // Subtle depth shadow
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.35)';
+        ctx.shadowBlur = 8;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 3;
+
+        // Warm luminous amber arrow (Chess.com style)
+        ctx.fillStyle = 'rgba(245, 166, 35, 0.88)';
+        ctx.strokeStyle = 'rgba(217, 119, 6, 0.4)';
+        ctx.lineWidth = 1.5;
+
+        // Single closed polygonal path for shaft and head
+        ctx.beginPath();
+        ctx.moveTo(0, -shaftWidth / 2);
+        ctx.lineTo(shaftLength, -shaftWidth / 2);
+        ctx.lineTo(shaftLength, -headWidth / 2);
+        ctx.lineTo(distance, 0); // Tip pointing directly into center of destination
+        ctx.lineTo(shaftLength, headWidth / 2);
+        ctx.lineTo(shaftLength, shaftWidth / 2);
+        ctx.lineTo(0, shaftWidth / 2);
+        // Rounded back cap
+        ctx.arc(0, 0, shaftWidth / 2, Math.PI / 2, -Math.PI / 2);
+        ctx.closePath();
+
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    // 3.3. Place Pieces with High-Res Standard Vector SVGs (On top of arrow!)
     for (let r = 0; r < 8; r++) {
       const fenRow = fenRows[isFlipped ? 7 - r : r] || '8';
       let col = 0;
@@ -208,58 +285,31 @@ export const MoveShareModal: React.FC<MoveShareModalProps> = ({
           const sqY = boardY + r * squareSize;
 
           const isWhitePiece = char === char.toUpperCase();
-          const symbol = PIECE_SYMBOLS[char] || '';
+          const pieceKey = `${isWhitePiece ? 'w' : 'b'}${char.toUpperCase()}`;
+          const img = getPieceImage(pieceKey);
 
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          ctx.font = `bold ${Math.floor(squareSize * 0.76)}px "Apple Symbols", "DejaVu Sans", "Segoe UI Symbol", sans-serif`;
+          const pad = squareSize * 0.07;
+          const pieceSize = squareSize * 0.86;
 
-          // Outer outline for readable pieces
-          ctx.fillStyle = isWhitePiece ? '#ffffff' : '#171717';
-          ctx.strokeStyle = isWhitePiece ? '#1f2937' : '#f3f4f6';
-          ctx.lineWidth = 1.8;
-
-          ctx.strokeText(symbol, sqX + squareSize / 2, sqY + squareSize / 2 + 2);
-          ctx.fillText(symbol, sqX + squareSize / 2, sqY + squareSize / 2 + 2);
+          if (img && img.complete && img.naturalWidth > 0) {
+            // Render crystal-clear vector piece SVG
+            ctx.drawImage(img, sqX + pad, sqY + pad, pieceSize, pieceSize);
+          } else {
+            // High-contrast Unicode fallback if image not ready yet
+            const symbol = PIECE_SYMBOLS[char] || '';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.font = `bold ${Math.floor(squareSize * 0.76)}px "Apple Symbols", "DejaVu Sans", "Segoe UI Symbol", sans-serif`;
+            ctx.fillStyle = isWhitePiece ? '#ffffff' : '#171717';
+            ctx.strokeStyle = isWhitePiece ? '#1f2937' : '#f3f4f6';
+            ctx.lineWidth = 1.8;
+            ctx.strokeText(symbol, sqX + squareSize / 2, sqY + squareSize / 2 + 2);
+            ctx.fillText(symbol, sqX + squareSize / 2, sqY + squareSize / 2 + 2);
+          }
 
           col++;
         }
       }
-    }
-
-    // Draw Move Direction Arrow (From -> To)
-    if (fromCenter && toCenter) {
-      const dx = toCenter.x - fromCenter.x;
-      const dy = toCenter.y - fromCenter.y;
-      const angle = Math.atan2(dy, dx);
-      const headlen = squareSize * 0.35;
-
-      ctx.save();
-      ctx.strokeStyle = 'rgba(234, 179, 8, 0.9)';
-      ctx.fillStyle = 'rgba(234, 179, 8, 0.9)';
-      ctx.lineWidth = squareSize * 0.16;
-      ctx.lineCap = 'round';
-
-      // Line
-      ctx.beginPath();
-      ctx.moveTo(fromCenter.x, fromCenter.y);
-      ctx.lineTo(toCenter.x, toCenter.y);
-      ctx.stroke();
-
-      // Arrow Head
-      ctx.beginPath();
-      ctx.moveTo(toCenter.x, toCenter.y);
-      ctx.lineTo(
-        toCenter.x - headlen * Math.cos(angle - Math.PI / 6),
-        toCenter.y - headlen * Math.sin(angle - Math.PI / 6)
-      );
-      ctx.lineTo(
-        toCenter.x - headlen * Math.cos(angle + Math.PI / 6),
-        toCenter.y - headlen * Math.sin(angle + Math.PI / 6)
-      );
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
     }
 
     // 4. Move Badge & Details Section
@@ -332,6 +382,7 @@ export const MoveShareModal: React.FC<MoveShareModalProps> = ({
     moveFullText,
     classConfig,
     evalScoreText,
+    piecesLoaded,
   ]);
 
   // Generate preview data URL whenever dependencies change
